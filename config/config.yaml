@@ -1,0 +1,33 @@
+samples: data/metadata/metadata_onesample.tsv
+units: data/metadata/units_onesample.tsv
+
+# Enable or Disable Modules
+# Right now things will probably break if anything is disabled
+modules:
+  cutadapt: enable
+  fastqc: enable
+  rRNA_depletion: enable
+
+params:
+  cutadapt-pe: "-a AGATCGGAAGAGCACACGTCTGAACTCCAGTCA -g AGATCGGAAGAGCGTCGTGTAGGGAAAGAGTGT -A AGATCGGAAGAGCACACGTCTGAACTCCAGTCA -G AGATCGGAAGAGCGTCGTGTAGGGAAAGAGTGT --minimum-length 33 -e 0.005 --overlap 7"
+  # reasoning behind parameters:
+  #   * `--minimum-length 33`:
+  #     * kallisto needs non-empty reads in current versions (fixed for future releases:
+  #       https://github.com/pachterlab/kallisto/commit/64fe837ca86f3664496483bcd2787c9376584fed)
+  #     * kallisto default k-mer length is 31 and 33 should give at least 3 k-mers for a read
+  #   * `-e 0.005`: the default cutadapt maximum error rate of `0.2` is far too high, for Illumina
+  #     data the error rate is more in the range of `0.005` and setting it accordingly should avoid
+  #     false positive adapter matches
+  #   * `--minimum-overlap 7`: the cutadapt default minimum overlap of `5` did trimming on the level
+  #     of expected adapter matches by chance
+
+refs:
+  rRNA_ref_dbs: 
+    - silva-arc-16s-id95
+    - silva-euk-18s-id95
+    - silva-bac-23s-id98
+    - silva-euk-28s-id98
+    - rfam-5s-database-id98
+    - rfam-5.8s-database-id98
+  human_genome_cDNA:
+    - Homo_sapiens.GRCh38.cdna.all.fa.gz
