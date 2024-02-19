@@ -1,3 +1,5 @@
+[![DOI](https://zenodo.org/badge/759815461.svg)](https://zenodo.org/badge/latestdoi/759815461)
+
 # README
 
 ## To run the workflow, do the following: 
