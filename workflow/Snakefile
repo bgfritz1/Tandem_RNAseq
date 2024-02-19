@@ -1,24 +1,598 @@
+import pandas as pd 
+import os
 from snakemake.utils import min_version
+import pdb
 
 min_version("6.3.0")
-
 configfile: "config/config.yaml"
 
-include: "rules/common.smk"
-include: "rules/trim.smk"
-#include: "rules/QC.smk"
-include: "rules/quant.smk"
-include: "rules/sortmerna.smk"
+#=============================
+# Get the sample information
+#=============================
+
+sample_information = pd.read_csv(config['samples'], sep='\t', comment='#',index_col=False)
+sample_units = pd.read_csv(config["units"], sep="\t", comment="#",index_col=False)
+
+#Still maybe a better way to do this, but better than before
+sample_names = list(sample_information['sample'])
+
+#=============================
+# Define Functions
+#=============================
+
+def getRawFastqs(sample, unit):
+	u = sample_fq_dict[(sample,unit)]
+	return([u[0], u[1]])
+
+def getFastqsToConcat(sample):
+	R1 = sample_units.loc[sample_units['sample'] == sample, 'fq1']
+	R2 = sample_units.loc[sample_units['sample'] == sample, 'fq2']
+	return([R1,R2])
+
+def getSampleNames(strategy):
+	if (strategy in ["PAIRED", "SINGLE"]):
+		samples = sample_information.loc[sample_information['strategy'] == strategy, 'sample']
+	if (strategy=="ALL"):
+		samples = sample_information['sample']
+	return(samples)
+
+def getSeqStrategy(sample):
+	return(sample_information.loc[sample_information['sample'] == sample, 'strategy'])
+
+def getLibStrandedness(sample):
+	strandedness = sample_information.loc[sample_information['sample'] == sample, 'strandedness']
+	return(strandedness.item())
+
+def get_rNAseq_database_arg():
+	databases = config["refs"]["rRNA_ref_dbs"]
+	arg = ""
+	for database in databases:
+		arg = f"{arg} --ref resources/rRNA_ref/{database}.fastq"
+	return(arg)
+
+def get_rRNA_dep(wildcards):
+	pairedness = getSeqStrategy(wildcards['sample'])
+	if (pairedness.item() == "PAIRED"): 
+		return(expand(
+			"results/rRNA_dep/{sample}_rRNAdep_{read}.fq.gz",
+			read=['fwd', 'rev'],
+			**wildcards,
+		))
+	if (pairedness.item() == "SINGLE"):
+		return(expand(
+			"results/rRNA_dep/{sample}_rRNAdep.fq.gz",
+			**wildcards,
+		))
+
+def get_unmapped(wildcards):
+	pairedness = getSeqStrategy(wildcards['sample'])
+	if (pairedness.item() == "PAIRED"): 
+		return(expand(
+			"results/unmapped/{sample}_unmapped_{read}.fq.gz",
+			read=['R1', 'R2'],
+			**wildcards,
+		))
+	if (pairedness.item() == "SINGLE"):
+		return(expand(
+			"results/rRNA_dep/{sample}_unmapped.fq.gz",
+			**wildcards,
+		))
+
+
+alignment_files = expand("results/counts/{sample}{ending}", sample = getSampleNames("ALL"), ending = [".featureCounts", ".featureCounts.summary",".featureCounts.jcounts"]),
+count_matrix = "results/counts/count_matrix.tsv",
+kraken_files = ["results/bracken/bac_abundance_table.csv","results/bracken/bac_count_table.csv"],
+unaligned_files = expand("results/unmapped/{sample}_unmapped_{read}.fq.gz", sample = getSampleNames("ALL"), read = ["R1", "R2"])
+muliqc_out = "results/qc/multiqc.html"
+qc = "results/qc/qc_summary.txt"
+
+input_files = []
+
+if config['run_alignment']:
+	input_files.append(alignment_files)
+	input_files.append(count_matrix)
+
+if config['run_kraken']:
+	input_files.append(kraken_files)
+
+if config["unmapped_reads"]["keep_unmapped"]:
+	input_files.append(unaligned_files)
+
+if config["run_multiqc"]:
+	input_files.append(muliqc_out)
+	input_files.append(qc)
+
+
+#=================================
+# Define Rules
+#=================================
 
 rule all:
-    input:
-        #Kallisto output
-        expand( "results/kallisto/{unit.sample}-{unit.unit}", unit = units[["sample", "unit"]].itertuples()),
-        #rRNAdatabases
-        expand("resources/rRNA_ref/{ref_db}.fastq", ref_db = config["refs"]["rRNA_ref_dbs"])
-
-        
+	input:
+		input_files,
+		#expand("results/unmapped/{sample}_unmapped.featureCounts", sample = getSampleNames("PAIRED")),
+		#"results/unmapped/count_matrix_unmapped.tsv"
 
 
+#=====================================
+# Concatenate across sequencing lanes
+#=====================================
 
-        
+rule concat_lanes_pe:
+	input:
+		r1 = lambda wildcards: getFastqsToConcat(wildcards.sample)[0],
+		r2 = lambda wildcards: getFastqsToConcat(wildcards.sample)[1]
+	output:
+		r1_concat="results/concat/{sample}.concat.R1.fastq.gz",
+		r2_concat="results/concat/{sample}.concat.R2.fastq.gz"
+	run:
+			if len(input.r1)>1:
+				shell("cat {input.r1} > {output.r1_concat}; cat {input.r2} > {output.r2_concat}")
+			else:
+				shell("ln -sr {input.r1} {output.r1_concat}; ln -sr {input.r2} {output.r2_concat}")
+
+rule concat_lanes_se:
+	input:
+		r1 = lambda wildcards: getFastqsToConcat(wildcards.sample)[0]
+	output:
+		r1_concat="results/concat/{sample}.concat.fastq.gz"
+	run:
+			if len(input.r1)>1:
+				shell("cat {input.r1} > {output.r1_concat}")
+			else:
+				shell("ln -sr {input.r1} {output.r1_concat}")
+
+#============================================
+# Trim Adapter Sequences and Size Selection
+#============================================
+
+rule cutadapt_pe:
+	input:
+		r1 = "results/concat/{sample}.concat.R1.fastq.gz",
+		r2 = "results/concat/{sample}.concat.R2.fastq.gz"
+	output:
+		fastq1="results/trimmed/{sample}.trim.R1.fastq.gz",
+		fastq2="results/trimmed/{sample}.trim.R2.fastq.gz",
+		qc="results/trimmed/{sample}.concat.qc.txt",
+	params:
+		extra="{}".format(config["params"]["cutadapt-pe"]),
+	resources:
+		walltime="4:00:00",
+		nodes="1",
+		ppn="12",
+		size="thinnode",
+		mem="40gb",
+	log:
+		"results/logs/cutadapt/{sample}.trim.log",
+	threads: 12
+	wrapper:
+		"v2.6.0/bio/cutadapt/pe"
+
+rule cutadapt_se:
+	input:
+		"results/concat/{sample}.concat.fastq.gz"
+	output:
+		fastq="results/trimmed/{sample}.trim.fastq.gz",
+		qc="results/trimmed/{sample}.qc.txt"
+	params:
+		extra="{}".format(config["params"]["cutadapt-se"]),
+	resources:
+		walltime="4:00:00",
+		nodes="1",
+		ppn="12",
+		size="thinnode",
+		mem="40gb",
+	log:
+		"results/logs/cutadapt/{sample}.log"
+	threads: 12 # set desired number of threads here
+	wrapper:
+		"v2.6.0/bio/cutadapt/se"
+
+#=============================================
+# Alignment with bwa-mem
+#=============================================
+
+db_name = config["aligner"]["db_prefix"]
+
+rule bwa_index:
+	input:
+		ref=config["aligner"]["reference_dir"]+config["aligner"]["reference_fq"]
+	output:
+		idx=multiext(config["aligner"]["reference_dir"]+db_name, ".amb", ".ann", ".bwt", ".pac", ".sa"),
+	log:
+		f"logs/bwa_index/{db_name}.log"
+	params:
+		algorithm="bwtsw",
+		prefix=config["aligner"]["reference_dir"]+db_name,
+		block_size="100000000",
+	resources:
+		walltime="12:00:00",
+		nodes="1",
+		ppn="12",
+		mem="40gb"
+	threads: 12
+	conda: 
+		 "envs/bwa.yaml"
+	shell:
+	   "bwa index " "-b {params.block_size} -p {params.prefix} " "-a {params.algorithm} " " {input}" " 2>{log}"
+
+rule bwa_mem:
+	input:
+		reads = ["results/trimmed/{sample}.trim.R1.fastq.gz", "results/trimmed/{sample}.trim.R2.fastq.gz"],
+		idx = multiext(config["aligner"]["reference_dir"]+db_name, ".amb", ".ann", ".bwt", ".pac", ".sa"),
+	output:
+		"results/bwa_mem/{sample}.bam",
+	log:
+		"results/logs/bwa_mem/{sample}.log",
+	params:
+		extra=r"-R '@RG\tID:{sample}\tSM:{sample}'",
+		sorting="none",  # Can be 'none', 'samtools' or 'picard'.
+		sort_order="queryname",  # Can be 'queryname' or 'coordinate'.
+		sort_extra="",  # Extra args for samtools/picard.
+	resources:
+		walltime="12:00:00",
+		nodes="1",
+		ppn="12",
+		mem="40gb",
+	threads: 12
+	wrapper:
+		"v2.6.0/bio/bwa/mem"
+
+rule samtools_stats:
+	input:
+		bam="results/bwa_mem/{sample}.bam"
+	output:
+		"results/samtools_stats/{sample}.txt",
+	params:
+		extra="",  # Optional: extra arguments.
+	resources:
+		walltime="12:00:00",
+		nodes="1",
+		ppn="12",
+		mem="15gb",
+	log:
+		"results/logs/samtools_stats/{sample}.log",
+	wrapper:
+		"v2.6.0/bio/samtools/stats"
+
+
+rule get_unmapped_pe:
+	input: 
+		"results/bwa_mem/{sample}.bam"
+	output:
+		fq1="results/unmapped/{sample}_unmapped_R1.fq.gz",
+		fq2="results/unmapped/{sample}_unmapped_R2.fq.gz",
+		bam=temp("results/unmapped/{sample}_unmapped.bam")
+	conda: 
+		"envs/bwa.yaml"
+	resources:
+		walltime="12:00:00",
+		nodes="1",
+		ppn="12",
+		mem="30gb",
+	threads: 12
+	log:
+		"results/logs/bwa_mem/{sample}_getunmapped.log"
+	shell:
+		"""
+		samtools view -b -f 4 {input} > {output.bam} 
+		
+		bedtools bamtofastq -i {output.bam} \
+			-fq results/unmapped/{wildcards.sample}_unmapped_R1.fq \
+			-fq2 results/unmapped/{wildcards.sample}_unmapped_R2.fq 2>{log}
+		
+		pigz -p {threads} results/unmapped/{wildcards.sample}_unmapped_R1.fq results/unmapped/{wildcards.sample}_unmapped_R2.fq
+		"""
+
+rule get_unmapped_se:
+	input: 
+		"results/bwa_mem/{sample}.bam"
+	output:
+		fq1="results/unmapped/{sample}_unmapped.fq.gz",
+		bam=temp("results/unmapped/{sample}_unmapped.bam")
+	conda: 
+		"envs/bwa.yaml"
+	resources:
+		walltime="12:00:00",
+		nodes="1",
+		ppn="12",
+		mem="30gb",
+	threads: 12
+	log:
+		"results/logs/bwa_mem/{sample}_getunmapped.log"
+	shell:
+		"""
+		samtools view -b -f 4 {input} > {output.bam} 
+		
+		bedtools bamtofastq -i {output.bam} \
+			-fq results/unmapped/{wildcards.sample}_unmapped.fq 2>{log}
+		
+		pigz -p {threads} results/unmapped/{wildcards.sample}_unmapped.fq
+		"""
+
+#===================================
+# Map Unmapped Reads if necessary
+#===================================
+rule bwa_index_unmapped:
+	input:
+		ref="resources/reference_genomes/" + config["unmapped_reads"]["unmapped_refs"]["reference_fq"]
+	output:
+		idx=multiext("resources/reference_genomes/" + config["unmapped_reads"]["unmapped_refs"]["reference_fq"], ".amb", ".ann", ".bwt", ".pac", ".sa"),
+	log:
+		f"logs/unmapped/{db_name}.log"
+	params:
+		algorithm="bwtsw",
+		prefix="resources/reference_genomes/" + config["unmapped_reads"]["unmapped_refs"]["reference_fq"],
+		block_size="100000000",
+	resources:
+		walltime="12:00:00",
+		nodes="1",
+		ppn="12",
+		mem="20gb"
+	threads: 12
+	conda: 
+		 "envs/bwa.yaml"
+	shell:
+	   "bwa index " "-b {params.block_size} -p {params.prefix} " "-a {params.algorithm} " " {input}" " 2>{log}"
+
+rule bwa_unmapped_pe:
+	input:
+		reads = get_unmapped,
+		idx = multiext("resources/reference_genomes/" + config["unmapped_reads"]["unmapped_refs"]["reference_fq"], ".amb", ".ann", ".bwt", ".pac", ".sa"),
+	output:
+		"results/unmapped/{sample}_alignUnmapped.bam",
+	log:
+		"results/logs/unmapped/{sample}.log",
+	params:
+		extra=r"-R '@RG\tID:{sample}\tSM:{sample}'",
+		sorting="none",  # Can be 'none', 'samtools' or 'picard'.
+		sort_order="queryname",  # Can be 'queryname' or 'coordinate'.
+		sort_extra="",  # Extra args for samtools/picard.
+	resources:
+		walltime="12:00:00",
+		nodes="1",
+		ppn="8",
+		mem="10gb",
+	threads: 10
+	conda:
+		"envs/bwa.yaml"
+	wrapper:
+		"v1.3.2/bio/bwa/mem"
+
+rule feature_counts_unmapped:
+	input:
+		# list of sam or bam files
+		samples="results/unmapped/{sample}_alignUnmapped.bam",
+		annotation="resources/reference_genomes/" + config["unmapped_reads"]["unmapped_refs"]["annotation_gtf"],
+		# optional input
+		#chr_names="",           # implicitly sets the -A flag
+		#fasta="genome.fasta"    # implicitly sets the -G flag
+	output:
+		multiext(
+			"results/unmapped/{sample}_unmapped",
+			".featureCounts",
+			".featureCounts.summary",
+		),
+	threads: 12
+	params:
+		strand=0,  # optional; strandness of the library (0: unstranded [default], 1: stranded, and 2: reversely stranded)
+		r_path="",  # implicitly sets the --Rpath flag
+		extra="-p -O --fracOverlap 0.2 -J -t CDS",
+	resources:
+		walltime="12:00:00",
+		nodes="1",
+		ppn="12",
+		mem="30gb",
+	log:
+		"logs/unmapped/{sample}_unmapped.log",
+	wrapper:
+		"v1.31.1/bio/subread/featurecounts"
+
+rule count_matrix_unmapped:
+	input:
+		expand("results/unmapped/{sample}_unmapped.featureCounts", sample = getSampleNames("PAIRED"))
+	output:
+		"results/unmapped/count_matrix_unmapped.tsv",
+	log:
+		"logs/count-matrix.log",
+	params:
+		samples= getSampleNames("ALL"),
+	resources:
+		walltime="12:00:00",
+		nodes="1",
+		ppn="8",
+		mem="15gb",
+	threads: 8
+	conda:
+		"envs/pandas.yaml"
+	script:
+		"scripts/count-matrix.py"
+
+
+#=============================================
+# Count mappings and make count matrix
+#=============================================
+
+rule feature_counts:
+	input:
+		# list of sam or bam files
+		samples="results/bwa_mem/{sample}.bam",
+		annotation=config["aligner"]["reference_dir"]+config["aligner"]["annotation_gtf"],
+		# optional input
+		#chr_names="",           # implicitly sets the -A flag
+		#fasta="genome.fasta"    # implicitly sets the -G flag
+	output:
+		multiext(
+			"results/counts/{sample}",
+			".featureCounts",
+			".featureCounts.summary",
+			".featureCounts.jcounts",
+		),
+	threads: 12
+	params:
+		strand=lambda wildcards: getLibStrandedness(wildcards.sample),  # optional; strandness of the library (0: unstranded [default], 1: stranded, and 2: reversely stranded)
+		r_path="",  # implicitly sets the --Rpath flag
+		extra="-p -O --countReadPairs --fracOverlap 0.2 -J -t gene",
+	resources:
+		walltime="12:00:00",
+		nodes="1",
+		ppn="12",
+		mem="30gb",
+	log:
+		"logs/featureCounts/{sample}.log",
+	wrapper:
+		"v1.31.1/bio/subread/featurecounts"
+
+rule count_matrix:
+	input:
+		expand("results/counts/{sample}.featureCounts", sample = getSampleNames("ALL"))
+	output:
+		"results/counts/count_matrix.tsv",
+	log:
+		"logs/count-matrix.log",
+	params:
+		samples= getSampleNames("ALL"),
+	resources:
+		walltime="12:00:00",
+		nodes="1",
+		ppn="8",
+		mem="15gb",
+	threads: 8
+	conda:
+		"envs/pandas.yaml"
+	script:
+		"scripts/count-matrix.py"
+
+
+#=======================================================
+# Estimate Bacterial mRNA Abundance with Bracken/Kraken
+#=======================================================
+
+ruleorder: kraken2_classify_PE > kraken2_classify_SE #Assume PE first, then try SE
+
+rule kraken2_classify_PE:
+	input:
+		fq1="results/trimmed/{sample}.trim.R1.fastq.gz",
+		fq2="results/trimmed/{sample}.trim.R1.fastq.gz",
+		db=config["refs"]["kraken_db_dir"]
+	output:
+		"results/kraken/{sample}.kraken.out"
+	log:
+		"results/logs/kraken/{sample}.log"
+	threads: 20
+	resources:
+		walltime="12:00:00",
+		nodes="1",
+		ppn="20",
+		mem="90gb",
+	conda:
+		"envs/kraken.yaml"
+	shell:
+		"kraken2 --threads {threads} --db {input.db} --report-zero-counts --paired --output - --report {output} {input.fq1} {input.fq2} 2>{log}"
+
+rule kraken2_classify_SE:
+	input:
+		fq="results/rRNA_dep/{sample}_rRNAdep.fq.gz",
+		db=config["refs"]["kraken_db_dir"]
+	output:
+		"results/kraken/{sample}.kraken.out"
+	log:
+		"results/logs/kraken/{sample}.log"
+	threads: 20
+	resources:
+		walltime="12:00:00",
+		nodes="1",
+		ppn="20",
+		mem="80gb",
+	conda:
+		"envs/kraken.yaml"
+	shell:
+		"kraken2 --threads {threads} --db {input.db} --report-zero-counts --output - --report {output} {input.fq} 2>{log}"
+
+rule braken_estimate:
+	input:
+		"results/kraken/{sample}.kraken.out"
+	output:
+		"results/bracken/{sample}.bracken.out"
+	log:
+		"results/logs/bracken/{sample}_bracken.log"
+	threads: 12
+	params:
+		kraken_db=config["refs"]["kraken_db_dir"],
+		read_length=config["params"]["kraken"]["read_length"],
+		threshold=0, 
+		classification_lvl="S",
+	resources:
+		walltime="12:00:00",
+		nodes="1",
+		ppn="12",
+		mem="15gb",
+	conda:
+		"envs/kraken.yaml"
+	shell:
+		"bracken -d {params.kraken_db} -i {input} -o {output} -w results/bracken/{wildcards.sample}_bracken_species.out -r {params.read_length} -t {params.threshold} -l {params.classification_lvl} 1>{log}"
+
+rule abundance_table:
+	input: 
+		kraken=expand("results/kraken/{sample}.kraken.out", sample = getSampleNames("ALL")),
+		bracken=expand("results/bracken/{sample}.bracken.out", sample = getSampleNames("ALL")),
+	output:
+		["results/bracken/bac_abundance_table.csv", "results/bracken/bac_count_table.csv"]
+	log:
+		"results/logs/bracken/bac_abundance_table.log"
+	threads: 1
+	resources:
+		walltime="12:00:00",
+		nodes="1",
+		ppn="8",
+		mem="12gb",
+	conda:
+		"envs/R.yaml"
+	script:
+		"scripts/abundance_table.R"
+
+#==============================
+# Quality Control with Multiqc 
+#==============================
+
+rule run_multiqc:
+	input:
+		expand("results/trimmed/{sample}.qc.txt", sample = getSampleNames("ALL")),
+		expand("results/counts/{sample}.featureCounts.summary", sample = getSampleNames("ALL")),
+		expand("results/samtools_stats/{sample}.txt", sample = getSampleNames("ALL"))
+	output:
+		"results/qc/multiqc.html",
+		expand("results/qc/multiqc_data/multiqc_{name}.txt", name = ["cutadapt", "featureCounts", "samtools_stats"])
+	params:
+		extra=""
+	resources:
+		walltime="12:00:00",
+		nodes="1",
+		ppn="12",
+		mem="15gb",
+	log:
+		"results/logs/multiqc/multiqc.log"
+	wrapper:
+		"v1.31.1/bio/multiqc"
+
+rule qc_summary:
+	input: 
+		cutadapt = "results/qc/multiqc_data/multiqc_cutadapt.txt",
+		featurecounts = "results/qc/multiqc_data/multiqc_featureCounts.txt",
+		samtools = "results/qc/multiqc_data/multiqc_samtools_stats.txt",
+	output:
+		"results/qc/qc_summary.txt"
+	params:
+		extra=""
+	resources:
+		walltime="12:00:00",
+		nodes="1",
+		ppn="12",
+		mem="15gb"
+	log: 
+		"results/logs/qc_summary/log.txt"
+	conda:
+		"envs/R.yaml"
+	script:
+		"scripts/summary_stats.R"
+

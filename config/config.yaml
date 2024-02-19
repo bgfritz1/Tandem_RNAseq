@@ -1,15 +1,55 @@
-samples: data/metadata/metadata_onesample.tsv
-units: data/metadata/units_onesample.tsv
 
-# Enable or Disable Modules
-# Right now things will probably break if anything is disabled
-modules:
-  cutadapt: enable
-  fastqc: enable
-  rRNA_depletion: enable
+#Computerome Group 
+group: MY_GROUPNAME
+
+#Sample metadata
+samples: config/metadata.tsv
+units: config/units.tsv
+
+# Steps
+
+run_alignment: true 
+run_kraken: false
+run_multiqc: true
+
+# Alignment Details
+aligner:
+  program: "bwa" #Can be 'bwa'
+  reference_dir: "resources/reference_genomes/Homo_sapiens/" # Reference DIR should contain the genome fq and gtf files. 
+  reference_fq: "Homo_sapiens.GRCh38.dna.primary_assembly.fa.gz" 
+  db_prefix: "Homo_sapiens.GRCh38.dna.primary_assembly"
+  annotation_gtf: "Homo_sapiens.GRCh38.107.gtf" # Possible buffer overflow error if not gzipped??
+  featureCounts_quantification_level: "gene" # "gene" or "exon"
+
+unmapped_reads:
+  keep_unmapped: false
+  align_unmapped: false
+  unmapped_refs: 
+      reference_fq: "custom/custom.fq"
+      annotation_gtf: "custom/custom.gtf"
+
+
+
+# DESeq2
+diffexp:
+  colname: test #metadata column to use for comparison
+  # contrasts for the deseq2 results method
+  contrasts:
+    test1-vs-test2:
+      - test1
+      - test2
+  model: ~test
+
+# PCA
+pca:
+  activate: True
+  labels:
+    # columns of sample sheet to use for PCA
+    - test
 
 params:
-  cutadapt-pe: "-a AGATCGGAAGAGCACACGTCTGAACTCCAGTCA -g AGATCGGAAGAGCGTCGTGTAGGGAAAGAGTGT -A AGATCGGAAGAGCACACGTCTGAACTCCAGTCA -G AGATCGGAAGAGCGTCGTGTAGGGAAAGAGTGT --minimum-length 33 -e 0.005 --overlap 7"
+  cutadapt-pe: "-a AGATCGGAAGAGCACACGTCTGAACTCCAGTCA -A AGATCGGAAGAGCGTCGTGTAGGGAAAGAGTGT -g AGATCGGAAGAGCGTCGTGTAGGGAAAGAGTGT -G AGATCGGAAGAGCACACGTCTGAACTCCAGTCA --minimum-length 33 -e 0.005 --overlap 7"
+  cutadapt-se: "-a AGATCGGAAGAGCACACGTCTGAACTCCAGTCA -g AGATCGGAAGAGCGTCGTGTAGGGAAAGAGTGT --minimum-length 33 -e 0.005 --overlap 7" 
   # reasoning behind parameters:
   #   * `--minimum-length 33`:
   #     * kallisto needs non-empty reads in current versions (fixed for future releases:
@@ -20,14 +60,39 @@ params:
   #     false positive adapter matches
   #   * `--minimum-overlap 7`: the cutadapt default minimum overlap of `5` did trimming on the level
   #     of expected adapter matches by chance
+  kraken:
+    read_length: 150
 
 refs:
   rRNA_ref_dbs: 
     - silva-arc-16s-id95
     - silva-euk-18s-id95
     - silva-bac-23s-id98
+    - silva-bac-16s-id90
     - silva-euk-28s-id98
     - rfam-5s-database-id98
     - rfam-5.8s-database-id98
+  kraken_db_dir:
+    - /PATH/TO/KRAKEN/DATABASE/FOR/EXAMPLE/k2_standard_20230314
   human_genome_cDNA:
     - Homo_sapiens.GRCh38.cdna.all.fa.gz
+
+plots:
+  bracken:
+    abund_cutoff: 0.05
+
+#===============================
+#Quantitative Model Evaluation
+#===============================
+
+genomes:
+  P_aeruginosa:
+    ref_fq: "P_aeruginosa/Pseudomonas_aeruginosa_PAO1_107.fna.gz"
+    annotation: "P_aeruginosa/Pseudomonas_aeruginosa_PAO1_107.gtf"
+  Homo_sapiens:
+    ref_fq: "Homo_sapiens.GRCh38.dna.primary_assembly.fa.gz"
+    annotation: "Homo_sapiens.GRCh38.106.gtf"
+
+  target_organism: "P_aeruginosa" # Should match folder names in reference/reference_genomes
+  filter1: "Homo_sapiens" #Filter reads from this genome (for example for Dual-RNA seq)
+

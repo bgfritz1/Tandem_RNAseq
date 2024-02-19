@@ -3,3 +3,4 @@ channels:
   - bioconda
 dependencies:
   - sortmerna=4.3.4
+  - pigz=2.6
