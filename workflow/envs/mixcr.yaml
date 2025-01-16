@@ -1,0 +1,7 @@
+name: mixcr
+channels:
+  - bioconda
+  - conda-forge
+  - milaboratories
+dependencies:
+  - mixcr=4.7.0  # Adjust to the required version

@@ -25,6 +25,7 @@ def getRawFastqs(sample, unit):
 	return([u[0], u[1]])
 
 def getFastqsToConcat(sample):
+	#Note: Something is weird with the mixcr rule and this function
 	R1 = sample_units.loc[sample_units['sample'] == sample, 'fq1']
 	R2 = sample_units.loc[sample_units['sample'] == sample, 'fq2']
 	return([R1,R2])
@@ -78,11 +79,18 @@ def get_unmapped(wildcards):
 			**wildcards,
 		))
 
+def should_run_mixcr():
+    return config.get("run_mixcr", False)
+
+#========================
+# Define Input Files
+#========================
 
 alignment_files = expand("results/counts/{sample}{ending}", sample = getSampleNames("ALL"), ending = [".featureCounts", ".featureCounts.summary",".featureCounts.jcounts"]),
 count_matrix = "results/counts/count_matrix.tsv",
 kraken_files = ["results/bracken/bac_abundance_table.csv","results/bracken/bac_count_table.csv"],
 unaligned_files = expand("results/unmapped/{sample}_unmapped_{read}.fq.gz", sample = getSampleNames("ALL"), read = ["R1", "R2"])
+mixcr_files = expand("results/mixcr/{sample}.clns", sample=getSampleNames("ALL"))
 muliqc_out = "results/qc/multiqc.html"
 qc = "results/qc/qc_summary.txt"
 
@@ -102,6 +110,10 @@ if config["run_multiqc"]:
 	input_files.append(muliqc_out)
 	input_files.append(qc)
 
+if should_run_mixcr():
+    input_files.append(mixcr_files)
+
+print(input_files)
 
 #=================================
 # Define Rules
@@ -596,3 +608,41 @@ rule qc_summary:
 	script:
 		"scripts/summary_stats.R"
 
+#====================================
+# Run MIXCR
+#====================================
+
+# MiXCR License Activation
+rule mixcr_activate_license:
+	output:
+		flag="results/mixcr/license_activated.flag"
+	log:
+		"results/logs/mixcr/license_activation.log"
+	conda:
+		"envs/mixcr.yaml"
+	shell:
+		"""
+		mixcr activate-license &> {log}
+		touch {output.flag}
+		"""
+
+# MiXCR: Alignment
+rule mixcr_align:
+	input:
+		r1="results/trimmed/{sample}.trim.R1.fastq.gz",
+		r2="results/trimmed/{sample}.trim.R2.fastq.gz"
+	output:
+		out="results/mixcr/{sample}.clns"
+	params:
+		species=config["mixcr"]["species"]
+	log:
+		"results/logs/mixcr/{sample}_analyze.log"
+	resources:
+		walltime="5:00:00",
+		nodes="1",
+		ppn="13",
+		mem="35gb"
+	conda:
+		"envs/mixcr.yaml"
+	shell:
+		"mixcr analyze rna-seq --species {params.species} {input.r1} {input.r2} results/mixcr/{wildcards.sample}"

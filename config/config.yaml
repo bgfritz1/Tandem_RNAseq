@@ -10,7 +10,8 @@ units: config/units.tsv
 
 run_alignment: true 
 run_kraken: false
-run_multiqc: true
+run_multiqc: false
+run_mixcr: true
 
 # Alignment Details
 aligner:
@@ -28,6 +29,16 @@ unmapped_reads:
       reference_fq: "custom/custom.fq"
       annotation_gtf: "custom/custom.gtf"
 
+#Mixcr
+
+mixcr:
+  ## Note, you must have the license file in ~/mi.license"
+  preset: rna-seq
+  species: "hsa"
+  #chain: "TRA,TRB"
+  #align_extra: "--species hsa"
+  #assemble_extra: "--write-alignments"
+  #db_dir: "resources/mixcr_db"
 
 
 # DESeq2
