@@ -5,4 +5,5 @@ channels:
 dependencies:
   - python=3.11  
   - pandas
+  - pygments
   - snakemake-minimal=8.27.1

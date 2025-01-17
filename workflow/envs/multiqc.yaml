@@ -1,0 +1,10 @@
+name: multiqc
+channels:
+  - conda-forge
+  - bioconda
+  - defaults
+dependencies:
+  - python=3.8  # Ensure compatibility with MultiQC
+  - multiqc=1.14  # Specify the MultiQC version
+  - pandas  # Required for handling input data by MultiQC
+  - click  # MultiQC depends on the Click library for CLI functionality

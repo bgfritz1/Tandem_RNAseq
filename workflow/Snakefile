@@ -25,7 +25,6 @@ def getRawFastqs(sample, unit):
 	return([u[0], u[1]])
 
 def getFastqsToConcat(sample):
-	#Note: Something is weird with the mixcr rule and this function
 	R1 = sample_units.loc[sample_units['sample'] == sample, 'fq1']
 	R2 = sample_units.loc[sample_units['sample'] == sample, 'fq2']
 	return([R1,R2])
@@ -90,7 +89,7 @@ alignment_files = expand("results/counts/{sample}{ending}", sample = getSampleNa
 count_matrix = "results/counts/count_matrix.tsv",
 kraken_files = ["results/bracken/bac_abundance_table.csv","results/bracken/bac_count_table.csv"],
 unaligned_files = expand("results/unmapped/{sample}_unmapped_{read}.fq.gz", sample = getSampleNames("ALL"), read = ["R1", "R2"])
-mixcr_files = expand("results/mixcr/{sample}.clns", sample=getSampleNames("ALL"))
+mixcr_files = expand("results/mixcr/{sample}.contigs.clns", sample=getSampleNames("ALL"))
 muliqc_out = "results/qc/multiqc.html"
 qc = "results/qc/qc_summary.txt"
 
@@ -108,7 +107,7 @@ if config["unmapped_reads"]["keep_unmapped"]:
 
 if config["run_multiqc"]:
 	input_files.append(muliqc_out)
-	input_files.append(qc)
+	#input_files.append(qc)
 
 if should_run_mixcr():
     input_files.append(mixcr_files)
@@ -122,7 +121,7 @@ print(input_files)
 rule all:
 	input:
 		input_files,
-		#expand("results/unmapped/{sample}_unmapped.featureCounts", sample = getSampleNames("PAIRED")),
+		# expand("results/unmapped/{sample}_unmapped.featureCounts", sample = getSampleNames("PAIRED")),
 		#"results/unmapped/count_matrix_unmapped.tsv"
 
 
@@ -568,45 +567,49 @@ rule abundance_table:
 #==============================
 
 rule run_multiqc:
-	input:
-		expand("results/trimmed/{sample}.qc.txt", sample = getSampleNames("ALL")),
-		expand("results/counts/{sample}.featureCounts.summary", sample = getSampleNames("ALL")),
-		expand("results/samtools_stats/{sample}.txt", sample = getSampleNames("ALL"))
-	output:
-		"results/qc/multiqc.html",
-		expand("results/qc/multiqc_data/multiqc_{name}.txt", name = ["cutadapt", "featureCounts", "samtools_stats"])
-	params:
-		extra=""
-	resources:
-		walltime="12:00:00",
-		nodes="1",
-		ppn="12",
-		mem="15gb",
-	log:
-		"results/logs/multiqc/multiqc.log"
-	wrapper:
-		"v1.31.1/bio/multiqc"
+    input:
+        trimmed_qc=expand("results/trimmed/{sample}.qc.txt", sample=getSampleNames("ALL")),
+        featurecounts=expand("results/counts/{sample}.featureCounts.summary", sample=getSampleNames("ALL")),
+        samtools=expand("results/samtools_stats/{sample}.txt", sample=getSampleNames("ALL"))
+    output:
+        multiqc_html="results/qc/multiqc.html",
+        multiqc_data=directory("results/qc/multiqc_data")
+    params:
+        extra=""
+    resources:
+        walltime="12:00:00",
+        nodes="1",
+        ppn="12",
+        mem="15gb"
+    log:
+        "results/logs/multiqc/multiqc.log"
+    conda:
+        "envs/multiqc.yaml"
+    shell:
+        """
+        multiqc -o results/qc -n multiqc.html {input.trimmed_qc} {input.featurecounts} {input.samtools} > {log} 2>&1
+        """
 
-rule qc_summary:
-	input: 
-		cutadapt = "results/qc/multiqc_data/multiqc_cutadapt.txt",
-		featurecounts = "results/qc/multiqc_data/multiqc_featureCounts.txt",
-		samtools = "results/qc/multiqc_data/multiqc_samtools_stats.txt",
-	output:
-		"results/qc/qc_summary.txt"
-	params:
-		extra=""
-	resources:
-		walltime="12:00:00",
-		nodes="1",
-		ppn="12",
-		mem="15gb"
-	log: 
-		"results/logs/qc_summary/log.txt"
-	conda:
-		"envs/R.yaml"
-	script:
-		"scripts/summary_stats.R"
+# rule qc_summary:
+#     input:
+#         cutadapt="results/qc/multiqc_data/multiqc_cutadapt.txt",
+#         featurecounts="results/qc/multiqc_data/multiqc_featureCounts.txt",
+#         samtools="results/qc/multiqc_data/multiqc_samtools_stats.txt"
+#     output:
+#         summary="results/qc/qc_summary.txt"
+#     params:
+#         extra=""
+#     resources:
+#         walltime="12:00:00",
+#         nodes="1",
+#         ppn="12",
+#         mem="15gb"
+#     log:
+#         "results/logs/qc_summary/log.txt"
+#     conda:
+#         "envs/R.yaml"
+#     script:
+#         "scripts/summary_stats.R"
 
 #====================================
 # Run MIXCR
@@ -632,7 +635,7 @@ rule mixcr_align:
 		r1="results/trimmed/{sample}.trim.R1.fastq.gz",
 		r2="results/trimmed/{sample}.trim.R2.fastq.gz"
 	output:
-		out="results/mixcr/{sample}.clns"
+		out="results/mixcr/{sample}.contigs.clns"
 	params:
 		species=config["mixcr"]["species"]
 	log:
@@ -645,4 +648,4 @@ rule mixcr_align:
 	conda:
 		"envs/mixcr.yaml"
 	shell:
-		"mixcr analyze rna-seq --species {params.species} {input.r1} {input.r2} results/mixcr/{wildcards.sample}"
+		"mixcr analyze rna-seq -f --species {params.species} {input.r1} {input.r2} results/mixcr/{wildcards.sample} > {log} 2>&1"
