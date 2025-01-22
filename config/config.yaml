@@ -1,6 +1,6 @@
 
 #Computerome Group 
-group: MY_GROUPNAME
+group: ku_00132 
 
 #Sample metadata
 samples: config/metadata.tsv
@@ -8,18 +8,18 @@ units: config/units.tsv
 
 # Steps
 
-run_alignment: true 
+run_alignment: false 
 run_kraken: false
 run_multiqc: false
-run_mixcr: true
+run_mixcr: false
 
 # Alignment Details
 aligner:
   program: "bwa" #Can be 'bwa'
-  reference_dir: "resources/reference_genomes/Homo_sapiens/" # Reference DIR should contain the genome fq and gtf files. 
+  reference_dir: "/home/projects/ku_00132/data/reference_genomes/homo_sapiens/" # Reference DIR should contain the genome fq and gtf files. 
   reference_fq: "Homo_sapiens.GRCh38.dna.primary_assembly.fa.gz" 
   db_prefix: "Homo_sapiens.GRCh38.dna.primary_assembly"
-  annotation_gtf: "Homo_sapiens.GRCh38.107.gtf" # Possible buffer overflow error if not gzipped??
+  annotation_gtf: "Homo_sapiens.GRCh38.113.gtf" # Possible buffer overflow error if not gzipped??
   featureCounts_quantification_level: "gene" # "gene" or "exon"
 
 unmapped_reads:
