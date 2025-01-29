@@ -1,0 +1,45 @@
+#PBS -W group_list=ku_00132 -A ku_00132
+### Job name (comment out the next line to get the name of the script used as the job name)
+#PBS -N mixcr_snakemake
+### Only send mail when job is aborted or terminates abnormally
+#PBS -m abe
+### Number of nodes
+#PBS -l nodes=1:ppn=1
+### Memory
+#PBS -l mem=4gb
+### Requesting time - format is <days>:<hours>:<minutes>:<seconds> (here, 12 hours)
+#PBS -l walltime=100:00:00
+
+
+cd /home/projects/ku_00132/data/RNA_seq/pipeline
+
+echo "==================="
+echo "Executing Pipeline"
+echo "==================="
+echo "                   "
+echo "Latest Git Commit: "
+echo "                   "
+
+git log --name-status HEAD^..HEAD
+
+echo "                    "
+echo "===================="
+echo " Starting Pipeline  "
+echo "===================="
+
+conda init 
+source ~/.bashrc
+conda activate mixcr
+
+snakemake --snakefile workflow/Snakefile_mixcr --unlock
+
+#Note: Setting cores crazy high due to bug limiting 
+# avail cores to those on submitting node
+
+snakemake --snakefile workflow/Snakefile_mixcr \
+          --keep-going \
+          --cores 10000 \
+          --profile config/Computerome2 \ 
+          --dry-run 
+           
+           

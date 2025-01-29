@@ -1,6 +1,8 @@
-import pandas as pd 
+import pandas as pd
 import os
+from snakemake.utils import min_version
 
+min_version("8.0.0")
 configfile: "config/config.yaml"
 
 #=============================
@@ -9,130 +11,101 @@ configfile: "config/config.yaml"
 
 sample_information = pd.read_csv(config['samples'], sep='\t', comment='#',index_col=False)
 sample_units = pd.read_csv(config["units"], sep="\t", comment="#",index_col=False)
-
-#Still maybe a better way to do this, but better than before
 sample_names = list(sample_information['sample'])
 
 
+#========================
+# Define the output files 
+#========================
 
-#=================================
-# Define Functions
-#=================================
+output_files = expand("results/mixcr/{sample}/{sample}.contigs.clns", sample = sample_names)
+
+
+#========================
+# Functions 
+#========================
 
 def getFastqsToConcat(sample):
-	R1 = sample_units.loc[sample_units['sample'] == sample, 'fq1']
-	R2 = sample_units.loc[sample_units['sample'] == sample, 'fq2']
-	return([R1,R2])
-
-def getSampleNames(strategy):
-	if (strategy in ["PAIRED", "SINGLE"]):
-		samples = sample_information.loc[sample_information['strategy'] == strategy, 'sample']
-	if (strategy=="ALL"):
-		samples = sample_information['sample']
-	return(samples)
+    R1 = sample_units.loc[sample_units['sample'] == sample, 'fq1']
+    R2 = sample_units.loc[sample_units['sample'] == sample, 'fq2']
+    return([R1,R2])
 
 
-#=================================
-# Define Rules
-#=================================
+#========================
+# Rules 
+#========================
 
-#input_files = expand("results/concat/{sample}.concat.{read}.fastq.gz", sample = getSampleNames("ALL"), read = ["R1", "R2"])
-
-cat_files = expand("results/concat/{sample}.concat.{read}.fastq.gz", sample = getSampleNames("ALL"), read = ["R1", "R2"])
-trimmed_files = expand("results/trimmed/{sample}.trim.{read}.fastq.gz", sample = getSampleNames("ALL"), read = ["R1", "R2"])
-aligned_files = expand("results/bwa_mem/{sample}.bam", sample = getSampleNames("ALL"))
-
-#indexdb
-db_name = config["aligner"]["db_prefix"]
-idx_output = multiext(config["aligner"]["reference_dir"]+db_name, ".amb", ".ann", ".bwt", ".pac", ".sa")
-
-input_files = expand("results/mixcr/{sample}.contigs.clns", sample = getSampleNames("ALL"))
-
-rule all:
-	input:
-		input_files
-
-
-#=====================================
-# Concatenate across sequencing lanes
-#=====================================
+rule all: 
+    input:
+        output_files
 
 rule concat_lanes_pe:
-	input:
-		r1 = lambda wildcards: getFastqsToConcat(wildcards.sample)[0],
-		r2 = lambda wildcards: getFastqsToConcat(wildcards.sample)[1]
-	output:
-		r1_concat="results/concat/{sample}.concat.R1.fastq.gz",
-		r2_concat="results/concat/{sample}.concat.R2.fastq.gz"
-	run:
-			if len(input.r1)>1:
-				shell("cat {input.r1} > {output.r1_concat}; cat {input.r2} > {output.r2_concat}")
-			else:
-				shell("ln -sr {input.r1} {output.r1_concat}; ln -sr {input.r2} {output.r2_concat}")
+    group:
+        "A"
+    input:
+        r1 = lambda wildcards: getFastqsToConcat(wildcards.sample)[0],
+        r2 = lambda wildcards: getFastqsToConcat(wildcards.sample)[1]
+    output:
+        r1_concat="results/concat/{sample}.concat.R1.fastq.gz",
+        r2_concat="results/concat/{sample}.concat.R2.fastq.gz"
+    threads: 20 
+    resources: 
+        mem="50gb",
+        walltime="10:00:00"
+    log:
+        "results/logs/cat/{sample}.txt"
+    shell:
+        """
+        cat {input.r1} > {output.r1_concat}
+        cat {input.r2} > {output.r2_concat} 
+        """
 
-#=====================================
-# Trim Adapters and Size Selection
-#=====================================
+#============================================
+# Trim Adapter Sequences and Size Selection
+#============================================
+
 
 rule cutadapt_pe:
-	input:
-		r1 = "results/concat/{sample}.concat.R1.fastq.gz",
-		r2 = "results/concat/{sample}.concat.R2.fastq.gz"
-	output:
-		fastq1="results/trimmed/{sample}.trim.R1.fastq.gz",
-		fastq2="results/trimmed/{sample}.trim.R2.fastq.gz",
-		qc="results/trimmed/{sample}.concat.qc.txt",
-	params:
-		extra="{}".format(config["params"]["cutadapt-pe"]),
-	resources:
-		walltime="4:00:00",
-		nodes="1",
-		ppn="8",
-		size="thinnode",
-		mem="40gb",
-	log:
-		"results/logs/cutadapt/{sample}.trim.log",
-	threads: 8
-	wrapper:
-		"v5.5.1/bio/cutadapt/pe"
-
-#=====================================
-# MiXCR
-#=====================================
-
-# MiXCR License Activation
-rule mixcr_activate_license:
-	output:
-		flag="results/mixcr/license_activated.flag"
-	log:
-		"results/logs/mixcr/license_activation.log"
-	conda:
-		"envs/mixcr.yaml"
-	shell:
-		"""
-		mixcr activate-license &> {log}
-		touch {output.flag}
-		"""
+    group:
+        "A"
+    input:
+        r1 = "results/concat/{sample}.concat.R1.fastq.gz",
+        r2 = "results/concat/{sample}.concat.R2.fastq.gz"
+    output:
+        fastq1="results/trimmed/{sample}.trim.R1.fastq.gz",
+        fastq2="results/trimmed/{sample}.trim.R2.fastq.gz",
+        qc="results/trimmed/{sample}.concat.qc.txt",
+    params:
+        extra="{}".format(config["params"]["cutadapt-pe"]),
+    resources:
+        walltime="10:00:00",
+        mem="50gb",
+    log:
+        "results/logs/cutadapt/{sample}.trim.log",
+    conda:
+        "mixcr"
+    threads: 20
+    wrapper:
+        "v5.5.2/bio/cutadapt/pe"
 
 # MiXCR: Alignment
 rule mixcr_align:
-	input:
-		r1="results/trimmed/{sample}.trim.R1.fastq.gz",
-		r2="results/trimmed/{sample}.trim.R2.fastq.gz"
-	output:
-		out="results/mixcr/{sample}.contigs.clns"
-	params:
-		species=config["mixcr"]["species"]
-	log:
-		"results/logs/mixcr/{sample}_analyze.log"
-	resources:
-		walltime="5:00:00",
-		nodes="1",
-		ppn="8",
-		mem="22gb"
-	conda:
-		"envs/mixcr.yaml"
-	shell:
-		"""
-		mixcr analyze rna-seq -f --species {params.species} {input.r1} {input.r2} results/mixcr/{wildcards.sample} > {log} 2>&1
-		"""
+    group:
+        "A"
+    input:
+        r1="results/trimmed/{sample}.trim.R1.fastq.gz",
+        r2="results/trimmed/{sample}.trim.R2.fastq.gz"
+    output:
+        out="results/mixcr/{sample}/{sample}.contigs.clns"
+    params:
+        species="HomoSapiens"
+    log:
+        "results/logs/mixcr/{sample}_analyze.log"
+    resources:
+        mem="50gb",
+        walltime="10:00:00"
+    threads: 20
+    conda:
+        "mixcr"
+    shell:
+        "mixcr analyze rna-seq -f --threads 19 --species {params.species} {input.r1} {input.r2} results/mixcr/{wildcards.sample}/{wildcards.sample} > {log} 2>&1"

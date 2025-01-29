@@ -1,10 +1,10 @@
-cluster: "pbs-submit.py -W group_list=GROUP_NAME_HERE -A GROUP_NAME_HERE --depend \"{dependencies}\" -o logs/cluster/ -e logs/cluster/"
-cluster-status: "pbs-status.py"
-jobscript: "pbs-jobscript.sh"
-jobs: 30
-jobname: "snakejob.{name}.{wildcards}.{jobid}.sh" 
+executor: "cluster-generic"
+cluster-generic-submit-cmd: "config/Computerome2/pbs-submit.py -W group_list=ku_00132 -A ku_00132 --depend \"{dependencies}\" -o results/logs/cluster/ -e results/logs/cluster/"
+cluster-generic-status-cmd: "config/Computerome2/pbs-status.py"
+jobscript: "config/Computerome2/pbs-jobscript.sh"
+jobs: 40 
+jobname: "{name}_{wildcards.sample}_{jobid}.sh" 
 verbose: true
 notemp: true
 latency-wait: 120 
 use-conda: true
-conda-prefix: ~/conda_cache/
