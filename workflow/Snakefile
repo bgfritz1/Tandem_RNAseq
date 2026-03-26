@@ -227,31 +227,70 @@ rule bwa_index:
 	shell:
 	   "bwa index " "-b {params.block_size} -p {params.prefix} " "-a {params.algorithm} " " {input}" " 2>{log}"
 
-rule bwa_mem:
-	input:
-		reads = ["results/trimmed/{sample}.trim.R1.fastq.gz", "results/trimmed/{sample}.trim.R2.fastq.gz"],
-		idx = multiext(config["aligner"]["reference_dir"]+db_name, ".amb", ".ann", ".bwt", ".pac", ".sa"),
-	output:
-		"results/bwa_mem/{sample}.bam",
-	log:
-		"results/logs/bwa_mem/{sample}.log",
-	params:
-		extra=r"-R '@RG\tID:{sample}\tSM:{sample}'",
-		sorting="none",  # Can be 'none', 'samtools' or 'picard'.
-		sort_order="queryname",  # Can be 'queryname' or 'coordinate'.
-		sort_extra="",  # Extra args for samtools/picard.
-	resources:
-		walltime="12:00:00",
-		nodes="1",
-		ppn="12",
-		mem="40gb",
-	threads: 12
-	wrapper:
-		"v2.6.0/bio/bwa/mem"
+# rule bwa_mem:
+# 	input:
+# 		reads = ["results/trimmed/{sample}.trim.R1.fastq.gz", "results/trimmed/{sample}.trim.R2.fastq.gz"],
+# 		idx = multiext(config["aligner"]["reference_dir"]+db_name, ".amb", ".ann", ".bwt", ".pac", ".sa"),
+# 	output:
+# 		"results/bwa_mem/{sample}.bam",
+# 	log:
+# 		"results/logs/bwa_mem/{sample}.log",
+# 	params:
+# 		extra=r"-R '@RG\tID:{sample}\tSM:{sample}'",
+# 		sorting="none",  # Can be 'none', 'samtools' or 'picard'.
+# 		sort_order="queryname",  # Can be 'queryname' or 'coordinate'.
+# 		sort_extra="",  # Extra args for samtools/picard.
+# 	resources:
+# 		walltime="12:00:00",
+# 		nodes="1",
+# 		ppn="12",
+# 		mem="40gb",
+# 	threads: 12
+# 	wrapper:
+# 		"v2.6.0/bio/bwa/mem"
+
+rule star_index:
+    input:
+        fasta=config["aligner"]["reference_dir"]+config["aligner"]["reference_fq"],
+    output:
+        directory("results/index/host"),
+    message:
+        "Testing STAR index"
+    threads: 1
+    params:
+        extra="",
+    log:
+        "logs/star_index_host.log",
+    wrapper:
+        "v3.3.7/bio/star/index"
+
+rule star_pe_multi:
+    input:
+        # use a list for multiple fastq files for one sample
+        # usually technical replicates across lanes/flowcells
+        fq1=["results/trimmed/{sample}.trim.R1.fastq.gz"],
+        # paired end reads needs to be ordered so each item in the two lists match
+        fq2=["results/trimmed/{sample}.trim.R2.fastq.gz"],  #optional
+        # path to STAR reference genome index
+        idx="index",
+    output:
+        # see STAR manual for additional output files
+        aln="star/pe/{sample}/pe_aligned.sam",
+        log="logs/pe/{sample}/Log.out",
+        sj="star/pe/{sample}/SJ.out.tab",
+        unmapped=["star/pe/{sample}/unmapped.1.fastq.gz","star/pe/{sample}/unmapped.2.fastq.gz"],
+    log:
+        "logs/pe/{sample}.log",
+    params:
+        # optional parameters
+        extra="",
+    threads: 8
+    wrapper:
+        "v3.3.7/bio/star/align"
 
 rule samtools_stats:
 	input:
-		bam="results/bwa_mem/{sample}.bam"
+		bam="star/pe/{sample}/pe_aligned.sam"
 	output:
 		"results/samtools_stats/{sample}.txt",
 	params:
@@ -322,6 +361,7 @@ rule get_unmapped_se:
 		"""
 
 #===================================
+
 # Map Unmapped Reads if necessary
 #===================================
 rule bwa_index_unmapped:
@@ -427,7 +467,7 @@ rule count_matrix_unmapped:
 rule feature_counts:
 	input:
 		# list of sam or bam files
-		samples="results/bwa_mem/{sample}.bam",
+		samples="star/pe/{sample}/pe_aligned.sam",
 		annotation=config["aligner"]["reference_dir"]+config["aligner"]["annotation_gtf"],
 		# optional input
 		#chr_names="",           # implicitly sets the -A flag
