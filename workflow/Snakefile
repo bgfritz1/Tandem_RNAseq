@@ -1,7 +1,6 @@
 import pandas as pd 
 import os
 from snakemake.utils import min_version
-import pdb
 
 min_version("6.3.0")
 configfile: "config/config.yaml"
@@ -88,7 +87,10 @@ def should_run_mixcr():
 alignment_files = expand("results/counts/{sample}{ending}", sample = getSampleNames("ALL"), ending = [".featureCounts", ".featureCounts.summary",".featureCounts.jcounts"]),
 count_matrix = "results/counts/count_matrix.tsv",
 kraken_files = ["results/bracken/bac_abundance_table.csv","results/bracken/bac_count_table.csv"],
-unaligned_files = expand("results/unmapped/{sample}_unmapped_{read}.fq.gz", sample = getSampleNames("ALL"), read = ["R1", "R2"])
+unaligned_files = (
+    expand("results/unmapped/{sample}_unmapped_{read}.fq.gz", sample=getSampleNames("PAIRED"), read=["R1", "R2"]) +
+    expand("results/unmapped/{sample}_unmapped.fq.gz", sample=getSampleNames("SINGLE"))
+)
 mixcr_files = expand("results/mixcr/{sample}.contigs.clns", sample=getSampleNames("ALL"))
 muliqc_out = "results/qc/multiqc.html"
 qc = "results/qc/qc_summary.txt"
@@ -111,8 +113,6 @@ if config["run_multiqc"]:
 
 if should_run_mixcr():
     input_files.append(mixcr_files)
-
-print(input_files)
 
 #=================================
 # Define Rules
@@ -227,28 +227,6 @@ rule bwa_index:
 	shell:
 	   "bwa index " "-b {params.block_size} -p {params.prefix} " "-a {params.algorithm} " " {input}" " 2>{log}"
 
-# rule bwa_mem:
-# 	input:
-# 		reads = ["results/trimmed/{sample}.trim.R1.fastq.gz", "results/trimmed/{sample}.trim.R2.fastq.gz"],
-# 		idx = multiext(config["aligner"]["reference_dir"]+db_name, ".amb", ".ann", ".bwt", ".pac", ".sa"),
-# 	output:
-# 		"results/bwa_mem/{sample}.bam",
-# 	log:
-# 		"results/logs/bwa_mem/{sample}.log",
-# 	params:
-# 		extra=r"-R '@RG\tID:{sample}\tSM:{sample}'",
-# 		sorting="none",  # Can be 'none', 'samtools' or 'picard'.
-# 		sort_order="queryname",  # Can be 'queryname' or 'coordinate'.
-# 		sort_extra="",  # Extra args for samtools/picard.
-# 	resources:
-# 		walltime="12:00:00",
-# 		nodes="1",
-# 		ppn="12",
-# 		mem="40gb",
-# 	threads: 12
-# 	wrapper:
-# 		"v2.6.0/bio/bwa/mem"
-
 rule star_index:
     input:
         fasta=config["aligner"]["reference_dir"]+config["aligner"]["reference_fq"],
@@ -272,7 +250,7 @@ rule star_pe_multi:
         # paired end reads needs to be ordered so each item in the two lists match
         fq2=["results/trimmed/{sample}.trim.R2.fastq.gz"],  #optional
         # path to STAR reference genome index
-        idx="index",
+        idx="results/index/host",
     output:
         # see STAR manual for additional output files
         aln="star/pe/{sample}/pe_aligned.sam",
@@ -327,11 +305,10 @@ rule get_unmapped_pe:
 		"""
 		samtools view -b -f 4 {input} > {output.bam} 
 		
-		bedtools bamtofastq -i {output.bam} \
-			-fq results/unmapped/{wildcards.sample}_unmapped_R1.fq \
-			-fq2 results/unmapped/{wildcards.sample}_unmapped_R2.fq 2>{log}
-		
-		pigz -p {threads} results/unmapped/{wildcards.sample}_unmapped_R1.fq results/unmapped/{wildcards.sample}_unmapped_R2.fq
+		FQ1=$(echo {output.fq1} | sed 's/\.gz$//')
+		FQ2=$(echo {output.fq2} | sed 's/\.gz$//')
+		bedtools bamtofastq -i {output.bam} -fq $FQ1 -fq2 $FQ2 2>{log}
+		pigz -p {threads} $FQ1 $FQ2
 		"""
 
 rule get_unmapped_se:
@@ -354,10 +331,9 @@ rule get_unmapped_se:
 		"""
 		samtools view -b -f 4 {input} > {output.bam} 
 		
-		bedtools bamtofastq -i {output.bam} \
-			-fq results/unmapped/{wildcards.sample}_unmapped.fq 2>{log}
-		
-		pigz -p {threads} results/unmapped/{wildcards.sample}_unmapped.fq
+		FQ1=$(echo {output.fq1} | sed 's/\.gz$//')
+		bedtools bamtofastq -i {output.bam} -fq $FQ1 2>{log}
+		pigz -p {threads} $FQ1
 		"""
 
 #===================================
@@ -447,7 +423,7 @@ rule count_matrix_unmapped:
 	log:
 		"logs/count-matrix.log",
 	params:
-		samples= getSampleNames("ALL"),
+		samples= getSampleNames("PAIRED"),
 	resources:
 		walltime="12:00:00",
 		nodes="1",
@@ -483,7 +459,7 @@ rule feature_counts:
 	params:
 		strand=lambda wildcards: getLibStrandedness(wildcards.sample),  # optional; strandness of the library (0: unstranded [default], 1: stranded, and 2: reversely stranded)
 		r_path="",  # implicitly sets the --Rpath flag
-		extra="-p -O --countReadPairs --fracOverlap 0.2 -J -t gene",
+		extra="-p -O --countReadPairs --fracOverlap 0.2 -J -t {}".format(config["aligner"]["featureCounts_quantification_level"]),
 	resources:
 		walltime="12:00:00",
 		nodes="1",
@@ -524,7 +500,7 @@ ruleorder: kraken2_classify_PE > kraken2_classify_SE #Assume PE first, then try 
 rule kraken2_classify_PE:
 	input:
 		fq1="results/trimmed/{sample}.trim.R1.fastq.gz",
-		fq2="results/trimmed/{sample}.trim.R1.fastq.gz",
+		fq2="results/trimmed/{sample}.trim.R2.fastq.gz",
 		db=config["refs"]["kraken_db_dir"]
 	output:
 		"results/kraken/{sample}.kraken.out"
@@ -608,7 +584,10 @@ rule abundance_table:
 
 rule run_multiqc:
     input:
-        trimmed_qc=expand("results/trimmed/{sample}.qc.txt", sample=getSampleNames("ALL")),
+        trimmed_qc=(
+            expand("results/trimmed/{sample}.concat.qc.txt", sample=getSampleNames("PAIRED")) +
+            expand("results/trimmed/{sample}.qc.txt", sample=getSampleNames("SINGLE"))
+        ),
         featurecounts=expand("results/counts/{sample}.featureCounts.summary", sample=getSampleNames("ALL")),
         samtools=expand("results/samtools_stats/{sample}.txt", sample=getSampleNames("ALL"))
     output:
@@ -629,27 +608,6 @@ rule run_multiqc:
         """
         multiqc -o results/qc -n multiqc.html {input.trimmed_qc} {input.featurecounts} {input.samtools} > {log} 2>&1
         """
-
-# rule qc_summary:
-#     input:
-#         cutadapt="results/qc/multiqc_data/multiqc_cutadapt.txt",
-#         featurecounts="results/qc/multiqc_data/multiqc_featureCounts.txt",
-#         samtools="results/qc/multiqc_data/multiqc_samtools_stats.txt"
-#     output:
-#         summary="results/qc/qc_summary.txt"
-#     params:
-#         extra=""
-#     resources:
-#         walltime="12:00:00",
-#         nodes="1",
-#         ppn="12",
-#         mem="15gb"
-#     log:
-#         "results/logs/qc_summary/log.txt"
-#     conda:
-#         "envs/R.yaml"
-#     script:
-#         "scripts/summary_stats.R"
 
 #====================================
 # Run MIXCR
@@ -673,11 +631,13 @@ rule mixcr_activate_license:
 rule mixcr_align:
 	input:
 		r1="results/trimmed/{sample}.trim.R1.fastq.gz",
-		r2="results/trimmed/{sample}.trim.R2.fastq.gz"
+		r2="results/trimmed/{sample}.trim.R2.fastq.gz",
+		flag="results/mixcr/license_activated.flag"
 	output:
 		out="results/mixcr/{sample}.contigs.clns"
 	params:
-		species=config["mixcr"]["species"]
+		species=config["mixcr"]["species"],
+		preset=config["mixcr"]["preset"]
 	log:
 		"results/logs/mixcr/{sample}_analyze.log"
 	resources:
@@ -688,4 +648,4 @@ rule mixcr_align:
 	conda:
 		"envs/mixcr.yaml"
 	shell:
-		"mixcr analyze rna-seq -f --species {params.species} {input.r1} {input.r2} results/mixcr/{wildcards.sample} > {log} 2>&1"
+		"mixcr analyze {params.preset} -f --species {params.species} {input.r1} {input.r2} results/mixcr/{wildcards.sample} > {log} 2>&1"

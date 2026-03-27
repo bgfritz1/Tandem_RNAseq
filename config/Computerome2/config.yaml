@@ -3,7 +3,7 @@ cluster-generic-submit-cmd: "config/Computerome2/pbs-submit.py -W group_list=ku_
 cluster-generic-status-cmd: "config/Computerome2/pbs-status.py"
 jobscript: "config/Computerome2/pbs-jobscript.sh"
 jobs: 40 
-jobname: "{name}_{wildcards.sample}_{jobid}.sh" 
+jobname: "{name}_{jobid}.sh" 
 verbose: true
 notemp: true
 latency-wait: 120 
