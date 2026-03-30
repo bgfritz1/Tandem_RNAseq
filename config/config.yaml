@@ -8,18 +8,17 @@ units: config/units.tsv
 
 # Steps
 
-run_alignment: true 
-run_kraken: false
+run_alignment: true
+run_kraken: true
+run_bracken: false
 run_multiqc: true
 
 # Alignment Details
 aligner:
-  program: "bwa" #Can be 'bwa'
-  reference_dir: "resources/reference_genomes/Homo_sapiens/" # Reference DIR should contain the genome fq and gtf files. 
-  reference_fq: "Homo_sapiens.GRCh38.dna.primary_assembly.fa.gz" 
-  db_prefix: "Homo_sapiens.GRCh38.dna.primary_assembly"
-  annotation_gtf: "Homo_sapiens.GRCh38.107.gtf" # Possible buffer overflow error if not gzipped??
-  featureCounts_quantification_level: "gene" # "gene" or "exon"
+  reference_dir: "resources/ref_genome/" # Reference DIR should contain the genome fq and gtf files. 
+  reference_fq: "Homo_sapiens.GRCh38.dna.chromosome.22.fa" # Should be unzipped
+  db_prefix: "Homo_sapiens.GRCh38.dna.chromosome.22"
+  annotation_gtf: "Homo_sapiens.GRCh38.115.chr.gtf.gz" # Possible buffer overflow error if not gzipped??
 
 unmapped_reads:
   keep_unmapped: false
@@ -27,25 +26,6 @@ unmapped_reads:
   unmapped_refs: 
       reference_fq: "custom/custom.fq"
       annotation_gtf: "custom/custom.gtf"
-
-
-
-# DESeq2
-diffexp:
-  colname: test #metadata column to use for comparison
-  # contrasts for the deseq2 results method
-  contrasts:
-    test1-vs-test2:
-      - test1
-      - test2
-  model: ~test
-
-# PCA
-pca:
-  activate: True
-  labels:
-    # columns of sample sheet to use for PCA
-    - test
 
 params:
   cutadapt-pe: "-a AGATCGGAAGAGCACACGTCTGAACTCCAGTCA -A AGATCGGAAGAGCGTCGTGTAGGGAAAGAGTGT -g AGATCGGAAGAGCGTCGTGTAGGGAAAGAGTGT -G AGATCGGAAGAGCACACGTCTGAACTCCAGTCA --minimum-length 33 -e 0.005 --overlap 7"
@@ -73,7 +53,7 @@ refs:
     - rfam-5s-database-id98
     - rfam-5.8s-database-id98
   kraken_db_dir:
-    - /PATH/TO/KRAKEN/DATABASE/FOR/EXAMPLE/k2_standard_20230314
+    - resources/babykraken
   human_genome_cDNA:
     - Homo_sapiens.GRCh38.cdna.all.fa.gz
 

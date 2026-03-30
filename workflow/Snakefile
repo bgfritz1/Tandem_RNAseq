@@ -4,7 +4,6 @@ from snakemake.utils import min_version
 import pdb
 
 min_version("6.3.0")
-configfile: "config/config.yaml"
 
 #=============================
 # Get the sample information
@@ -81,7 +80,13 @@ def get_unmapped(wildcards):
 
 alignment_files = expand("results/counts/{sample}{ending}", sample = getSampleNames("ALL"), ending = [".featureCounts", ".featureCounts.summary",".featureCounts.jcounts"]),
 count_matrix = "results/counts/count_matrix.tsv",
-kraken_files = ["results/bracken/bac_abundance_table.csv","results/bracken/bac_count_table.csv"],
+
+# Disabiling kraken abundance estimations for not. Need to find a good alternative for a small testing data set for kraken
+# Probably will work fine when directed to full kraken db...But not tested!
+
+kraken_files = expand("results/kraken/{sample}.kraken.out", sample = getSampleNames("ALL"))
+bracken_files = ["results/bracken/bac_abundance_table.csv","results/bracken/bac_count_table.csv"],
+
 unaligned_files = expand("results/unmapped/{sample}_unmapped_{read}.fq.gz", sample = getSampleNames("ALL"), read = ["R1", "R2"])
 muliqc_out = "results/qc/multiqc.html"
 qc = "results/qc/qc_summary.txt"
@@ -95,13 +100,21 @@ if config['run_alignment']:
 if config['run_kraken']:
 	input_files.append(kraken_files)
 
+if config['run_bracken']:
+	input_files.append(bracken_files)
+
 if config["unmapped_reads"]["keep_unmapped"]:
 	input_files.append(unaligned_files)
 
 if config["run_multiqc"]:
 	input_files.append(muliqc_out)
-	input_files.append(qc)
+	#input_files.append(qc)
 
+#=================================
+# Singularity Environment
+#=================================
+
+singularity: "docker://continuumio/miniconda3:26.1.1"
 
 #=================================
 # Define Rules
@@ -171,7 +184,7 @@ rule cutadapt_pe:
 rule cutadapt_se:
 	input:
 		"results/concat/{sample}.concat.fastq.gz"
-	output:
+	output:	
 		fastq="results/trimmed/{sample}.trim.fastq.gz",
 		qc="results/trimmed/{sample}.qc.txt"
 	params:
@@ -189,21 +202,59 @@ rule cutadapt_se:
 		"v2.6.0/bio/cutadapt/se"
 
 #=============================================
-# Alignment with bwa-mem
+# Alignment with STAR 
 #=============================================
 
-db_name = config["aligner"]["db_prefix"]
+rule star_index:
+	input:
+		fasta=config["aligner"]["reference_dir"]+config["aligner"]["reference_fq"],
+	output:
+		directory("resources/ref_genome/" + config["aligner"]["db_prefix"]),
+	message:
+		"Make STAR index"
+	threads: 1
+	params:
+		extra="",
+	log:
+		f"results/logs/star_index_{config['aligner']['db_prefix']}.log",
+	wrapper:
+		"v9.4.1/bio/star/index"
+
+rule star_pe_multi:
+    input:
+        fq1=["results/concat/{sample}.concat.R1.fastq.gz"],
+        fq2=["results/concat/{sample}.concat.R2.fastq.gz"],  
+        # path to STAR reference genome index
+        idx="resources/ref_genome/" + config["aligner"]["db_prefix"]
+    output:
+        # see STAR manual for additional output files
+        aln="results/star/pe/{sample}/pe_aligned.sam",
+        log="results/logs/pe/{sample}/Log.out",
+        sj="results/star/pe/{sample}/SJ.out.tab",
+        unmapped=["results/star/pe/{sample}/unmapped.1.fastq.gz","results/star/pe/{sample}/unmapped.2.fastq.gz"],
+    log:
+		    "results/logs/pe/{sample}.log",
+    params:
+        # optional parameters
+        extra="",
+    threads: 8
+    wrapper:
+        "v9.4.1/bio/star/align"
+
+#=============================================
+# Alignment with bwa-mem
+#=============================================
 
 rule bwa_index:
 	input:
 		ref=config["aligner"]["reference_dir"]+config["aligner"]["reference_fq"]
 	output:
-		idx=multiext(config["aligner"]["reference_dir"]+db_name, ".amb", ".ann", ".bwt", ".pac", ".sa"),
+		idx=multiext(config["aligner"]["reference_dir"]+config["aligner"]["db_prefix"], ".amb", ".ann", ".bwt", ".pac", ".sa"),
 	log:
-		f"logs/bwa_index/{db_name}.log"
+		f"results/logs/bwa_index_{config['aligner']['db_prefix']}.log"
 	params:
 		algorithm="bwtsw",
-		prefix=config["aligner"]["reference_dir"]+db_name,
+		prefix=config["aligner"]["reference_dir"]+config["aligner"]["db_prefix"],
 		block_size="100000000",
 	resources:
 		walltime="12:00:00",
@@ -219,7 +270,7 @@ rule bwa_index:
 rule bwa_mem:
 	input:
 		reads = ["results/trimmed/{sample}.trim.R1.fastq.gz", "results/trimmed/{sample}.trim.R2.fastq.gz"],
-		idx = multiext(config["aligner"]["reference_dir"]+db_name, ".amb", ".ann", ".bwt", ".pac", ".sa"),
+		idx = multiext(config["aligner"]["reference_dir"]+config["aligner"]["db_prefix"], ".amb", ".ann", ".bwt", ".pac", ".sa"),
 	output:
 		"results/bwa_mem/{sample}.bam",
 	log:
@@ -240,7 +291,7 @@ rule bwa_mem:
 
 rule samtools_stats:
 	input:
-		bam="results/bwa_mem/{sample}.bam"
+		bam = "results/star/pe/{sample}/pe_aligned.sam"
 	output:
 		"results/samtools_stats/{sample}.txt",
 	params:
@@ -319,7 +370,7 @@ rule bwa_index_unmapped:
 	output:
 		idx=multiext("resources/reference_genomes/" + config["unmapped_reads"]["unmapped_refs"]["reference_fq"], ".amb", ".ann", ".bwt", ".pac", ".sa"),
 	log:
-		f"logs/unmapped/{db_name}.log"
+		f"results/logs/unmapped/{os.path.basename(config['unmapped_reads']['unmapped_refs']['reference_fq'])}.log"
 	params:
 		algorithm="bwtsw",
 		prefix="resources/reference_genomes/" + config["unmapped_reads"]["unmapped_refs"]["reference_fq"],
@@ -384,7 +435,7 @@ rule feature_counts_unmapped:
 		ppn="12",
 		mem="30gb",
 	log:
-		"logs/unmapped/{sample}_unmapped.log",
+		"results/logs/unmapped/{sample}_unmapped.log",
 	wrapper:
 		"v1.31.1/bio/subread/featurecounts"
 
@@ -394,7 +445,7 @@ rule count_matrix_unmapped:
 	output:
 		"results/unmapped/count_matrix_unmapped.tsv",
 	log:
-		"logs/count-matrix.log",
+		"results/logs/count-matrix.log",
 	params:
 		samples= getSampleNames("ALL"),
 	resources:
@@ -416,7 +467,7 @@ rule count_matrix_unmapped:
 rule feature_counts:
 	input:
 		# list of sam or bam files
-		samples="results/bwa_mem/{sample}.bam",
+		samples="results/star/pe/{sample}/pe_aligned.sam",
 		annotation=config["aligner"]["reference_dir"]+config["aligner"]["annotation_gtf"],
 		# optional input
 		#chr_names="",           # implicitly sets the -A flag
@@ -432,16 +483,16 @@ rule feature_counts:
 	params:
 		strand=lambda wildcards: getLibStrandedness(wildcards.sample),  # optional; strandness of the library (0: unstranded [default], 1: stranded, and 2: reversely stranded)
 		r_path="",  # implicitly sets the --Rpath flag
-		extra="-p -O --countReadPairs --fracOverlap 0.2 -J -t gene",
+		extra="-p -O --countReadPairs --fracOverlap 0.2 -J -t exon",
 	resources:
 		walltime="12:00:00",
 		nodes="1",
 		ppn="12",
 		mem="30gb",
 	log:
-		"logs/featureCounts/{sample}.log",
+		"results/logs/featureCounts/{sample}.log",
 	wrapper:
-		"v1.31.1/bio/subread/featurecounts"
+		"v9.4.1/bio/subread/featurecounts"
 
 rule count_matrix:
 	input:
@@ -449,7 +500,7 @@ rule count_matrix:
 	output:
 		"results/counts/count_matrix.tsv",
 	log:
-		"logs/count-matrix.log",
+		"results/logs/count-matrix.log",
 	params:
 		samples= getSampleNames("ALL"),
 	resources:
@@ -465,16 +516,35 @@ rule count_matrix:
 
 
 #=======================================================
-# Estimate Bacterial mRNA Abundance with Bracken/Kraken
+# Classify Reads with Kraken2
 #=======================================================
 
 ruleorder: kraken2_classify_PE > kraken2_classify_SE #Assume PE first, then try SE
+
+rule kraken_build:
+	input: 
+		pathname = config["refs"]["kraken_db_dir"]
+
+	output:
+		hash = "{config['refs']['kraken_db_dir']}/hash.t2d",
+		taxo = "{config['refs']['kraken_db_dir']}/taxo.t2d", 
+		opts = "{config['refs']['kraken_db_dir']}/opts.t2d"
+	log:
+		"results/logs/kraken/kraken_build.log"
+	threads: 4
+	conda:
+		"envs/kraken.yaml"
+	shell:
+		"""
+		mkdir -p {params.kraken_db}
+		k2-build --standard --db {input.pathname} 1>{log} 2>&1 || true
+		"""
 
 rule kraken2_classify_PE:
 	input:
 		fq1="results/trimmed/{sample}.trim.R1.fastq.gz",
 		fq2="results/trimmed/{sample}.trim.R1.fastq.gz",
-		db=config["refs"]["kraken_db_dir"]
+		db=config["refs"]["kraken_db_dir"],
 	output:
 		"results/kraken/{sample}.kraken.out"
 	log:
@@ -493,7 +563,8 @@ rule kraken2_classify_PE:
 rule kraken2_classify_SE:
 	input:
 		fq="results/rRNA_dep/{sample}_rRNAdep.fq.gz",
-		db=config["refs"]["kraken_db_dir"]
+		db=config["refs"]["kraken_db_dir"],
+
 	output:
 		"results/kraken/{sample}.kraken.out"
 	log:
@@ -508,10 +579,35 @@ rule kraken2_classify_SE:
 		"envs/kraken.yaml"
 	shell:
 		"kraken2 --threads {threads} --db {input.db} --report-zero-counts --output - --report {output} {input.fq} 2>{log}"
+	
+
+#=======================================================
+# Estimate bacterial abundance with Bracken
+#=======================================================
+
+rule bracken_build:
+	input:
+		# depends on kraken DB having been built
+		kraken_db_built = directory(config["refs"]["kraken_db_dir"])
+	output:
+		"results/bracken/bracken_db"
+	params:
+		read_length=lambda wildcards: config["params"]["kraken"]["read_length"],
+		kmer=lambda wildcards: config["params"]["kraken"].get("kmer", 35),
+		kraken_db=lambda wildcards: config["refs"]["kraken_db_dir"] if isinstance(config["refs"]["kraken_db_dir"], str) else config["refs"]["kraken_db_dir"][0]
+	log:
+		"results/logs/bracken/bracken_build.log"
+	threads: 4
+	conda:
+		"envs/kraken.yaml"
+	shell:
+		"""
+		bracken-build -d {params.kraken_db} -t {threads} -k {params.kmer} -l {params.read_length} 1>{log} 2>&1 || true
+		"""
 
 rule braken_estimate:
 	input:
-		"results/kraken/{sample}.kraken.out"
+		kraken_out="results/kraken/{sample}.kraken.out",
 	output:
 		"results/bracken/{sample}.bracken.out"
 	log:
@@ -530,7 +626,8 @@ rule braken_estimate:
 	conda:
 		"envs/kraken.yaml"
 	shell:
-		"bracken -d {params.kraken_db} -i {input} -o {output} -w results/bracken/{wildcards.sample}_bracken_species.out -r {params.read_length} -t {params.threshold} -l {params.classification_lvl} 1>{log}"
+		"bracken -d {params.kraken_db} -i {input.kraken_out} -o {output} -w results/bracken/{wildcards.sample}_bracken_species.out -r {params.read_length} -t {params.threshold} -l {params.classification_lvl} 1>{log}"
+
 
 rule abundance_table:
 	input: 
@@ -555,25 +652,21 @@ rule abundance_table:
 # Quality Control with Multiqc 
 #==============================
 
-rule run_multiqc:
-	input:
-		expand("results/trimmed/{sample}.qc.txt", sample = getSampleNames("ALL")),
-		expand("results/counts/{sample}.featureCounts.summary", sample = getSampleNames("ALL")),
-		expand("results/samtools_stats/{sample}.txt", sample = getSampleNames("ALL"))
-	output:
-		"results/qc/multiqc.html",
-		expand("results/qc/multiqc_data/multiqc_{name}.txt", name = ["cutadapt", "featureCounts", "samtools_stats"])
-	params:
-		extra=""
-	resources:
-		walltime="12:00:00",
-		nodes="1",
-		ppn="12",
-		mem="15gb",
-	log:
-		"results/logs/multiqc/multiqc.log"
-	wrapper:
-		"v1.31.1/bio/multiqc"
+rule test_multiqc_file:
+  input:
+    expand("results/samtools_stats/{sample}.txt", sample=getSampleNames("ALL")),
+    expand("results/counts/{sample}.featureCounts.summary", sample = getSampleNames("ALL")),
+    expand("results/samtools_stats/{sample}.txt", sample = getSampleNames("ALL"))
+  output:
+      "results/qc/multiqc.html",
+      "results/qc_data/multiqc_data.zip",
+  params:
+      extra="--verbose",  # Optional: extra parameters for multiqc.
+      #use_input_files_only=True,  # Optional, use only a.txt and don't search folder samtools_stats for files
+  log:
+      "logs/multiqc.log",
+  wrapper:
+      "v9.4.1/bio/multiqc"
 
 rule qc_summary:
 	input: 
