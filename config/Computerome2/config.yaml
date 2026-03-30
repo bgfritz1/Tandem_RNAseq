@@ -1,10 +1,11 @@
-cluster: "pbs-submit.py -W group_list=GROUP_NAME_HERE -A GROUP_NAME_HERE --depend \"{dependencies}\" -o logs/cluster/ -e logs/cluster/"
-cluster-status: "pbs-status.py"
+cluster-generic-submit-cmd: "pbs-submit.py -W group_list=GROUP_NAME_HERE -A GROUP_NAME_HERE --depend \"{dependencies}\" -o logs/cluster/ -e logs/cluster/"
+cluster-generic-status-cmd: "pbs-status.py"
 jobscript: "pbs-jobscript.sh"
-jobs: 30
+jobs: 10 
 jobname: "snakejob.{name}.{wildcards}.{jobid}.sh" 
 verbose: true
 notemp: true
 latency-wait: 120 
 use-conda: true
-conda-prefix: ~/conda_cache/
+use-singularity: true
+conda-prefix: "/home/projects/ku_00132/.conda_cache"
