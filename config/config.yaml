@@ -18,7 +18,7 @@ aligner:
   reference_dir: "resources/ref_genome/" # Reference DIR should contain the genome fq and gtf files. 
   reference_fq: "Homo_sapiens.GRCh38.dna.chromosome.22.fa" # Should be unzipped
   db_prefix: "Homo_sapiens.GRCh38.dna.chromosome.22"
-  annotation_gtf: "Homo_sapiens.GRCh38.115.chr.gtf.gz" # Possible buffer overflow error if not gzipped??
+  annotation_gtf: "GCF_000001405.26_GRCh38_genomic.gtf.gz" # Possible buffer overflow error if not gzipped??
 
 unmapped_reads:
   keep_unmapped: false
