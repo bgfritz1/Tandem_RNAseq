@@ -1,11 +1,37 @@
-cluster-generic-submit-cmd: "pbs-submit.py -W group_list=GROUP_NAME_HERE -A GROUP_NAME_HERE --depend \"{dependencies}\" -o logs/cluster/ -e logs/cluster/"
+# snakemake_cluster_config.yaml
+executor: cluster-generic
+
+# Command to submit a job to the cluster
+cluster-generic-submit-cmd: >
+  pbs-submit.py
+  -W group_list=ku_00132
+  -A ku_00132
+  --depend "{dependencies}"
+  -o logs/cluster/
+  -e logs/cluster/
+
+# Command to check job status; must return one of: running, completed, failed
 cluster-generic-status-cmd: "pbs-status.py"
+
+# Template jobscript for submitted jobs
 jobscript: "pbs-jobscript.sh"
-jobs: 10 
-jobname: "snakejob.{name}.{wildcards}.{jobid}.sh" 
+
+# Max number of rules to submit from this session (login node)
+jobs: 10
+
+# How to name job scripts
+jobname: "snakejob.{rule}.{jobid}.sh"
+
+# Snakemake logging verbosity
 verbose: true
+
+# Keep temp files
 notemp: true
-latency-wait: 120 
+
+# Wait time (seconds) for NFS / shared filesystem latency
+latency-wait: 120
+
+# Conda integration
 use-conda: true
-use-singularity: true
 conda-prefix: "/home/projects/ku_00132/.conda_cache"
+
