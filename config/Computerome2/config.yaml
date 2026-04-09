@@ -1,17 +1,23 @@
-# snakemake_cluster_config.yaml
-executor: 'cluster-generic'
+# Snakemake v9 profile for Computerome2 PBS cluster
+executor: cluster-generic
 
-cluster-generic-submit-cmd: "qsub -W group_list=ku_00132 -A ku_00132 -l nodes=1:ppn=8:thinnode,mem=20g,walltime=8:00:00 " 
-
-default-resources: true
+# Submit wrapper script — reads per-rule resources (walltime, ppn, mem) from the jobscript
+cluster-generic-submit-cmd: "config/Computerome2/pbs-submit.py -W 'group_list=ku_00132' -A ku_00132"
 
 # Command to check job status; must return one of: running, completed, failed
-#cluster-generic-status-cmd: "pbs-status.py"
+cluster-generic-status-cmd: "config/Computerome2/pbs-status.py"
 
 # Template jobscript for submitted jobs
-#jobscript: "pbs-jobscript.sh"
+jobscript: "config/Computerome2/pbs-jobscript.sh"
 
-# Max number of rules to submit from this session (login node)
+# Default resources for jobs that don't explicitly define them
+default-resources:
+  - walltime="02:00:00"
+  - nodes="1"
+  - ppn="1"
+  - mem="4gb"
+
+# Max number of jobs to submit from this session (login node)
 jobs: 10
 
 # How to name job scripts
@@ -26,7 +32,7 @@ notemp: true
 # Wait time (seconds) for NFS / shared filesystem latency
 latency-wait: 120
 
-# Conda integration
-use-conda: true
+# Conda integration (use-conda was removed in Snakemake v8+)
+software-deployment-method: conda
 conda-prefix: "/home/projects/ku_00132/.conda_cache"
 

@@ -4,7 +4,7 @@ import sys
 import argparse
 import subprocess
 
-from snakemake.utils import read_job_properties
+from snakemake_interface_executor_plugins.utils import read_job_properties
 
 parser=argparse.ArgumentParser(add_help=False)
 parser.add_argument("--depend", help="Space separated list of ids for jobs this job should depend on.")

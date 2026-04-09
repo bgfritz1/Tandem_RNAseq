@@ -1,6 +1,4 @@
 #!/bin/sh
 # properties = {properties}
-module load tools miniconda3/4.12.0
-module load mamba-org/mamba/0.24.0
-module load snakemake/6.15.3
+module load tools snakemake/9.16.3 apptainer/1.4.0 miniconda3/24.9.2
 {exec_job}

@@ -3,7 +3,7 @@ import os
 from snakemake.utils import min_version
 import pdb
 
-min_version("6.3.0")
+min_version("9.0.0")
 
 #=============================
 # Get the sample information
@@ -209,6 +209,11 @@ rule star_index:
 	threads: 1
 	params:
 		extra="",
+	resources:
+		walltime="12:00:00",
+		nodes="1",
+		ppn="12",
+		mem="40gb"
 	log:
 		f"results/logs/star_index_{config['aligner']['db_prefix']}.log",
 	wrapper:
@@ -227,7 +232,7 @@ rule star_pe_multi:
         sj="results/star/pe/{sample}/SJ.out.tab",
         unmapped=["results/star/pe/{sample}/unmapped.1.fastq.gz","results/star/pe/{sample}/unmapped.2.fastq.gz"],
     log:
-		    "results/logs/pe/{sample}.log",
+        "results/logs/pe/{sample}.log",
     params:
         # optional parameters
         extra="--outSAMtype BAM SortedByCoordinate --outSAMstrandField intronMotif --outSAMattributes NH HI AS nM NM MD",
@@ -262,9 +267,9 @@ rule bwa_index:
 		mem="40gb"
 	threads: 12
 	conda: 
-		 "envs/bwa.yaml"
+		"envs/bwa.yaml"
 	shell:
-	   "bwa index " "-b {params.block_size} -p {params.prefix} " "-a {params.algorithm} " " {input}" " 2>{log}"
+		"bwa index " "-b {params.block_size} -p {params.prefix} " "-a {params.algorithm} " " {input}" " 2>{log}"
 
 rule bwa_mem:
 	input:
