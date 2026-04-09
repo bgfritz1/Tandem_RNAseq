@@ -222,8 +222,8 @@ rule star_index:
 
 rule star_pe_multi:
     input:
-        fq1=["results/concat/{sample}.concat.R1.fastq.gz"],
-        fq2=["results/concat/{sample}.concat.R2.fastq.gz"],  
+        fq1=["results/trimmed/{sample}.trim.R1.fastq.gz"],
+        fq2=["results/trimmed/{sample}.trim.R2.fastq.gz"],  
         # path to STAR reference genome index
         idx="resources/ref_genome/" + config["aligner"]["db_prefix"]
     output:
