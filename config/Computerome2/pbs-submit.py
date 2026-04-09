@@ -1,10 +1,18 @@
 #!/usr/bin/env python3
 import os
 import sys
+import json
 import argparse
 import subprocess
 
-from snakemake_interface_executor_plugins.utils import read_job_properties
+
+def read_job_properties(jobscript):
+    """Parse Snakemake job properties from the '# properties = {...}' line in the jobscript."""
+    with open(jobscript) as fh:
+        for line in fh:
+            if line.startswith("# properties ="):
+                return json.loads(line.split("=", 1)[1].strip())
+    return {}
 
 parser=argparse.ArgumentParser(add_help=False)
 parser.add_argument("--depend", help="Space separated list of ids for jobs this job should depend on.")
