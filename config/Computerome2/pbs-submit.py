@@ -132,7 +132,10 @@ if "resources" in job_properties:
     resources = job_properties["resources"]
     if "nodes" in resources: nodes="nodes=" + str(resources["nodes"])
     if ppn and not nodes : nodes="nodes=1"
-    if "mem" in resources: mem="mem=" + str(resources["mem"])
+    if "mem" in resources:
+        # Normalize memory: remove spaces and lowercase (e.g. "4 GB" -> "4gb", "30gb" -> "30gb")
+        mem_raw = str(resources["mem"]).replace(" ", "").lower()
+        mem = "mem=" + mem_raw
     if "walltime" in resources: walltime="walltime=" + str(resources["walltime"])
 
 if nodes or ppn or mem or walltime: resourceparams = " -l \""
