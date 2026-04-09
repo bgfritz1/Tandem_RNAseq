@@ -32,6 +32,15 @@ notemp: true
 # Wait time (seconds) for NFS / shared filesystem latency
 latency-wait: 120
 
+# Shared filesystem usage — explicitly set to avoid passing removed 'software-deployment-cache' value
+shared-fs-usage:
+  - persistence
+  - storage-local-copies
+  - source-cache
+  - sources
+  - input-output
+  - software-deployment
+
 # Conda integration (use-conda was removed in Snakemake v8+)
 software-deployment-method: conda
 conda-prefix: "/home/projects/ku_00132/.conda_cache"
