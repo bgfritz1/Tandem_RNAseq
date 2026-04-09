@@ -111,12 +111,6 @@ if config["run_multiqc"]:
 	#input_files.append(qc)
 
 #=================================
-# Singularity Environment
-#=================================
-
-singularity: "docker://continuumio/miniconda3:26.1.1"
-
-#=================================
 # Define Rules
 #=================================
 
@@ -228,7 +222,7 @@ rule star_pe_multi:
         idx="resources/ref_genome/" + config["aligner"]["db_prefix"]
     output:
         # see STAR manual for additional output files
-        aln="results/star/pe/{sample}/pe_aligned.sam",
+        aln="results/star/pe/{sample}/pe_aligned.bam",
         log="results/logs/pe/{sample}/Log.out",
         sj="results/star/pe/{sample}/SJ.out.tab",
         unmapped=["results/star/pe/{sample}/unmapped.1.fastq.gz","results/star/pe/{sample}/unmapped.2.fastq.gz"],
@@ -236,8 +230,13 @@ rule star_pe_multi:
 		    "results/logs/pe/{sample}.log",
     params:
         # optional parameters
-        extra="",
-    threads: 8
+        extra="--outSAMtype BAM SortedByCoordinate --outSAMstrandField intronMotif --outSAMattributes NH HI AS nM NM MD",
+    threads: 12
+    resources:
+        walltime="12:00:00",
+        nodes="1",
+        ppn="12",
+        mem="40gb"
     wrapper:
         "v9.4.1/bio/star/align"
 
@@ -291,7 +290,7 @@ rule bwa_mem:
 
 rule samtools_stats:
 	input:
-		bam = "results/star/pe/{sample}/pe_aligned.sam"
+		bam = "results/star/pe/{sample}/pe_aligned.bam"
 	output:
 		"results/samtools_stats/{sample}.txt",
 	params:
@@ -467,7 +466,7 @@ rule count_matrix_unmapped:
 rule feature_counts:
 	input:
 		# list of sam or bam files
-		samples="results/star/pe/{sample}/pe_aligned.sam",
+		samples="results/star/pe/{sample}/pe_aligned.bam",
 		annotation=config["aligner"]["reference_dir"]+config["aligner"]["annotation_gtf"],
 		# optional input
 		#chr_names="",           # implicitly sets the -A flag
@@ -659,7 +658,7 @@ rule test_multiqc_file:
     expand("results/samtools_stats/{sample}.txt", sample = getSampleNames("ALL"))
   output:
       "results/qc/multiqc.html",
-      "results/qc_data/multiqc_data.zip",
+      "results/qc/multiqc_data.zip",
   params:
       extra="--verbose",  # Optional: extra parameters for multiqc.
       #use_input_files_only=True,  # Optional, use only a.txt and don't search folder samtools_stats for files
