@@ -156,16 +156,15 @@ if "cluster" in job_properties:
         os.makedirs(os.path.dirname(cluster["output"]), exist_ok=True)
         so = " -o " + cluster["output"]
 
-# Default log paths if not set via cluster config
-if not se or not so:
-    rule = job_properties.get("rule", "unknown")
-    jobid = job_properties.get("jobid", "0")
-    log_dir = "results/logs/cluster"
-    os.makedirs(log_dir, exist_ok=True)
-    if not se:
-        se = f" -e {log_dir}/{rule}.{jobid}.err"
-    if not so:
-        so = f" -o {log_dir}/{rule}.{jobid}.out"
+# Route PBS .o/.e output files to results/logs/cluster
+rule = job_properties.get("rule", "unknown")
+jobid = job_properties.get("jobid", "0")
+log_dir = "results/logs/cluster"
+os.makedirs(log_dir, exist_ok=True)
+if not se:
+    se = f" -e {log_dir}/{rule}.{jobid}.err"
+if not so:
+    so = f" -o {log_dir}/{rule}.{jobid}.out"
 
 cmd = "qsub {a}{A}{b}{c}{C}{d}{D}{e}{f}{h}{j}{l}{m}{M}{N}{o}{p}{P}{q}{t}{u}{v}{V}{w}{W}{rp}{ex}".format(\
 	a=atime,A=acc_string,b=pbs_time,c=chkpt,C=pref,d=dd,D=rd,e=se,f=ft,h=hold,j=j,l=resource,m=mail,M=mailuser,\

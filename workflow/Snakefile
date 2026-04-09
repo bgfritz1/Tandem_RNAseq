@@ -202,11 +202,12 @@ rule cutadapt_se:
 rule star_index:
 	input:
 		fasta=config["aligner"]["reference_dir"]+config["aligner"]["reference_fq"],
+		gtf=config["aligner"]["reference_dir"]+config["aligner"]["annotation_gtf"],
 	output:
 		directory("resources/ref_genome/" + config["aligner"]["db_prefix"]),
 	message:
 		"Make STAR index"
-	threads: 1
+	threads: 12
 	params:
 		extra="",
 	resources:
