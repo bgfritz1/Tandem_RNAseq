@@ -292,7 +292,7 @@ rule bwa_mem:
 		mem="40gb",
 	threads: 12
 	wrapper:
-		"v2.6.0/bio/bwa/mem"
+		"v9.4.1/bio/bwa/mem"
 
 rule samtools_stats:
 	input:
@@ -309,7 +309,7 @@ rule samtools_stats:
 	log:
 		"results/logs/samtools_stats/{sample}.log",
 	wrapper:
-		"v2.6.0/bio/samtools/stats"
+		"v9.4.1/bio/samtools/stats"
 
 
 rule get_unmapped_pe:
