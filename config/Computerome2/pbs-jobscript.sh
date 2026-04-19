@@ -1,5 +1,9 @@
-#!/bin/sh
+#!/bin/bash
 # properties = {properties}
-conda deactivate 2>/dev/null || true
-module load tools snakemake/9.16.3 apptainer/1.4.0 miniconda3/24.9.2
+
+export MAMBA_ROOT_PREFIX=/home/projects/ku_00132/apps/micromamba
+module load micromamba/2.5.0
+eval "$(micromamba shell hook --shell bash)"
+micromamba activate snakemake
+
 {exec_job}

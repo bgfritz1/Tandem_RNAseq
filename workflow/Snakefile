@@ -126,17 +126,16 @@ rule all:
 #=====================================
 
 rule concat_lanes_pe:
-	input:
-		r1 = lambda wildcards: getFastqsToConcat(wildcards.sample)[0],
-		r2 = lambda wildcards: getFastqsToConcat(wildcards.sample)[1]
-	output:
-		r1_concat="results/concat/{sample}.concat.R1.fastq.gz",
-		r2_concat="results/concat/{sample}.concat.R2.fastq.gz"
-	run:
-			if len(input.r1)>1:
-				shell("cat {input.r1} > {output.r1_concat}; cat {input.r2} > {output.r2_concat}")
-			else:
-				shell("ln -sr {input.r1} {output.r1_concat}; ln -sr {input.r2} {output.r2_concat}")
+    input:
+        r1=lambda wc: getFastqsToConcat(wc.sample)[0],
+        r2=lambda wc: getFastqsToConcat(wc.sample)[1]
+    output:
+        r1="results/concat/{sample}.concat.R1.fastq.gz",
+        r2="results/concat/{sample}.concat.R2.fastq.gz"
+    log:
+        "results/logs/concat/{sample}.log"
+    shell:
+        "workflow/scripts/concat_fastqs.sh {wildcards.sample} {output.r1} {output.r2} {input.r1} {input.r2} > {log} 2>&1"
 
 rule concat_lanes_se:
 	input:

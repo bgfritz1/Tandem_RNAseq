@@ -5,7 +5,7 @@ executor: cluster-generic
 cluster-generic-submit-cmd: "config/Computerome2/pbs-submit.py -W 'group_list=ku_00132' -A ku_00132"
 
 # Command to check job status; must return one of: running, completed, failed
-cluster-generic-status-cmd: "config/Computerome2/pbs-status.py"
+#cluster-generic-status-cmd: "config/Computerome2/pbs-status.py"
 
 # Template jobscript for submitted jobs
 jobscript: "config/Computerome2/pbs-jobscript.sh"
@@ -26,22 +26,12 @@ jobname: "snakejob.{rule}.{jobid}.sh"
 # Snakemake logging verbosity
 verbose: true
 
-# Keep temp files
-notemp: true
 
 # Wait time (seconds) for NFS / shared filesystem latency
 latency-wait: 120
 
-# Shared filesystem usage — explicitly set to avoid passing removed 'software-deployment-cache' value
-shared-fs-usage:
-  - persistence
-  - storage-local-copies
-  - source-cache
-  - sources
-  - input-output
-  - software-deployment
+mode: default
 
 # Conda integration (use-conda was removed in Snakemake v8+)
 software-deployment-method: conda
-conda-prefix: "/home/projects/ku_00132/.conda_cache"
 
