@@ -16,6 +16,18 @@ sample_units = pd.read_csv(config["units"], sep="\t", comment="#",index_col=Fals
 sample_names = list(sample_information['sample'])
 
 #=============================
+# Make sure GTF is not gzipped 
+#=============================
+
+def unzipped(path):
+	return path[:-3] if path.endswith(".gz") else path
+
+REF_FA_RAW  = config["aligner"]["reference_dir"] + config["aligner"]["reference_fq"]
+REF_GTF_RAW = config["aligner"]["reference_dir"] + config["aligner"]["annotation_gtf"]
+REF_FA  = unzipped(REF_FA_RAW)
+REF_GTF = unzipped(REF_GTF_RAW)
+
+#=============================
 # Define Functions
 #=============================
 
@@ -24,9 +36,8 @@ def getRawFastqs(sample, unit):
 	return([u[0], u[1]])
 
 def getFastqsToConcat(sample):
-	R1 = sample_units.loc[sample_units['sample'] == sample, 'fq1']
-	R2 = sample_units.loc[sample_units['sample'] == sample, 'fq2']
-	return([R1,R2])
+	u = sample_units[sample_units["sample"] == sample].sort_values("unit")
+	return [u["fq1"].tolist(), u["fq2"].dropna().tolist()]
 
 def getSampleNames(strategy):
 	if (strategy in ["PAIRED", "SINGLE"]):
@@ -126,27 +137,26 @@ rule all:
 #=====================================
 
 rule concat_lanes_pe:
-    input:
-        r1=lambda wc: getFastqsToConcat(wc.sample)[0],
-        r2=lambda wc: getFastqsToConcat(wc.sample)[1]
-    output:
-        r1="results/concat/{sample}.concat.R1.fastq.gz",
-        r2="results/concat/{sample}.concat.R2.fastq.gz"
-    log:
-        "results/logs/concat/{sample}.log"
-    shell:
-        "workflow/scripts/concat_fastqs.sh {wildcards.sample} {output.r1} {output.r2} {input.r1} {input.r2} > {log} 2>&1"
+	input:
+		r1=lambda wc: getFastqsToConcat(wc.sample)[0],
+		r2=lambda wc: getFastqsToConcat(wc.sample)[1],
+	output:
+		r1=temp("results/concat/{sample}.concat.R1.fastq.gz"),
+		r2=temp("results/concat/{sample}.concat.R2.fastq.gz"),
+	log:
+		"results/logs/concat/{sample}.log",
+	shell:
+		"(cat {input.r1} > {output.r1} && cat {input.r2} > {output.r2}) 2> {log}"
 
 rule concat_lanes_se:
 	input:
-		r1 = lambda wildcards: getFastqsToConcat(wildcards.sample)[0]
+		r1=lambda wc: getFastqsToConcat(wc.sample)[0],
 	output:
-		r1_concat="results/concat/{sample}.concat.fastq.gz"
-	run:
-			if len(input.r1)>1:
-				shell("cat {input.r1} > {output.r1_concat}")
-			else:
-				shell("ln -sr {input.r1} {output.r1_concat}")
+		r1_concat="results/concat/{sample}.concat.fastq.gz",
+	log:
+		"results/logs/concat/{sample}.log",
+	shell:
+		"cat {input.r1} > {output.r1_concat} 2> {log}"
 
 #============================================
 # Trim Adapter Sequences and Size Selection
@@ -198,22 +208,43 @@ rule cutadapt_se:
 # Alignment with STAR 
 #=============================================
 
+# Make sure STAR index gtf is not gzipped
+
+if REF_GTF_RAW.endswith(".gz"):
+	rule gunzip_gtf:
+		input:
+			REF_GTF_RAW
+		output:
+			temp(REF_GTF)
+		shell:
+			"gunzip -c {input} > {output}"
+
+if REF_FA_RAW.endswith(".gz"):
+	rule gunzip_fasta:
+		input:
+			REF_FA_RAW
+		output:
+			temp(REF_FA)
+		shell:
+			"gunzip -c {input} > {output}"
+
 rule star_index:
 	input:
-		fasta=config["aligner"]["reference_dir"]+config["aligner"]["reference_fq"],
-		gtf=config["aligner"]["reference_dir"]+config["aligner"]["annotation_gtf"],
+		fasta=REF_FA,
+		gtf=REF_GTF,
 	output:
 		directory("resources/ref_genome/" + config["aligner"]["db_prefix"]),
 	message:
 		"Make STAR index"
 	threads: 12
 	params:
-		extra="",
+		sjdbOverhang=config["params"]["kraken"]["read_length"] - 1,
+		extra=config["aligner"].get("star_index_extra", ""),
 	resources:
 		walltime="12:00:00",
 		nodes="1",
 		ppn="12",
-		mem="40gb"
+		mem="40gb",
 	log:
 		f"results/logs/star_index_{config['aligner']['db_prefix']}.log",
 	wrapper:
@@ -547,7 +578,7 @@ rule kraken_build:
 rule kraken2_classify_PE:
 	input:
 		fq1="results/trimmed/{sample}.trim.R1.fastq.gz",
-		fq2="results/trimmed/{sample}.trim.R1.fastq.gz",
+		fq2="results/trimmed/{sample}.trim.R2.fastq.gz",
 		db=config["refs"]["kraken_db_dir"],
 	output:
 		"results/kraken/{sample}.kraken.out"
