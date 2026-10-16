@@ -244,7 +244,7 @@ rule star_index:
 		walltime="12:00:00",
 		nodes="1",
 		ppn="12",
-		mem="40gb",
+		mem="80gb",
 	log:
 		f"results/logs/star_index_{config['aligner']['db_prefix']}.log",
 	wrapper:
@@ -260,6 +260,7 @@ rule star_pe_multi:
         # see STAR manual for additional output files
         aln="results/star/pe/{sample}/pe_aligned.bam",
         log="results/logs/pe/{sample}/Log.out",
+        log_final="results/logs/pe/{sample}/Log.final.out",
         sj="results/star/pe/{sample}/SJ.out.tab",
         unmapped=["results/star/pe/{sample}/unmapped.1.fastq.gz","results/star/pe/{sample}/unmapped.2.fastq.gz"],
     log:
@@ -274,7 +275,7 @@ rule star_pe_multi:
         ppn="12",
         mem="40gb"
     wrapper:
-        "v9.4.1/bio/star/align"
+        "v5.5.1/bio/star/align"
 
 #=============================================
 # Alignment with bwa-mem
@@ -472,7 +473,7 @@ rule feature_counts_unmapped:
 	log:
 		"results/logs/unmapped/{sample}_unmapped.log",
 	wrapper:
-		"v1.31.1/bio/subread/featurecounts"
+		u"v1.31.1/bio/subread/featurecounts"
 
 rule count_matrix_unmapped:
 	input:
@@ -518,16 +519,17 @@ rule feature_counts:
 	params:
 		strand=lambda wildcards: getLibStrandedness(wildcards.sample),  # optional; strandness of the library (0: unstranded [default], 1: stranded, and 2: reversely stranded)
 		r_path="",  # implicitly sets the --Rpath flag
-		extra="-p -O --countReadPairs --fracOverlap 0.2 -J -t exon",
+		extra="-B -C -p --countReadPairs -J -t exon -g gene_id",
 	resources:
 		walltime="12:00:00",
 		nodes="1",
-		ppn="12",
-		mem="30gb",
+		ppn="8",
+		mem="15gb",
+		tmpdir="/scratch" #probably better to define this in config file
 	log:
 		"results/logs/featureCounts/{sample}.log",
 	wrapper:
-		"v9.4.1/bio/subread/featurecounts"
+		"v6.1.1/bio/subread/featurecounts"
 
 rule count_matrix:
 	input:

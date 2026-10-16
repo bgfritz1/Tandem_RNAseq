@@ -3,8 +3,8 @@
 group: ku_00132
 
 #Sample metadata
-samples: config/metadata_smallTest.tsv
-units: config/units_smallTest.tsv
+samples: config/metadata.tsv
+units: config/units.tsv
 
 # Steps
 
