@@ -1,19 +1,15 @@
 # Test configuration: runs the full pipeline on the small test data in
-# resources/ (4 samples, chr22 reference, babykraken). Used by
-# tests/run_local_test.sh via the config/local profile.
-
-
-#Computerome Group 
-group: ku_00132
+# tests/data/ (4 samples, chr22 reference, babykraken). Used by
+# tests/run_local_test.sh via the tests/profile profile.
 
 # Output directory: all results are written here. Relative paths are resolved
 # from the directory snakemake is launched in; absolute paths also work.
 # Can be overridden at runtime with: --config outdir=/path/to/out
-outdir: "results_test"
+outdir: "tests/results"
 
 #Sample metadata
-samples: config/test/metadata.tsv
-units: config/test/units.tsv
+samples: tests/config/metadata.tsv
+units: tests/config/units.tsv
 
 # Steps
 
@@ -24,7 +20,7 @@ run_multiqc: true
 
 # Alignment Details
 aligner:
-  reference_dir: "resources/ref_genome/" # Reference DIR should contain the genome fq and gtf files. 
+  reference_dir: "tests/data/ref_genome/" # Reference DIR should contain the genome fq and gtf files. 
   reference_fq: "Homo_sapiens.GRCh38.dna.chromosome.22.fa"
   db_prefix: "chr22_star"
   star_index_extra: "--genomeSAindexNbases 11" # required by STAR for a small (~50 Mb) genome
@@ -63,7 +59,7 @@ refs:
     - rfam-5s-database-id98
     - rfam-5.8s-database-id98
   kraken_db_dir:
-    - resources/babykraken
+    - tests/data/babykraken
   human_genome_cDNA:
     - Homo_sapiens.GRCh38.cdna.all.fa.gz
 

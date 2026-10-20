@@ -1,21 +1,22 @@
 #!/usr/bin/env bash
-# Rebuild resources/test_data/ so it only contains read pairs that map to chr22.
-# Needs STAR BAMs from a previous test run (results_test/star/pe/<sample>/pe_aligned.bam)
-# and samtools on PATH. Original FASTQs are moved to resources/test_data_full/.
+# Rebuild tests/data/fastq/ so it only contains read pairs that map to chr22.
+# Needs STAR BAMs from a previous test run (tests/results/star/pe/<sample>/pe_aligned.bam,
+# e.g. from: bash tests/run_local_test.sh --keep)
+# and samtools on PATH. Original FASTQs are moved to tests/data/fastq_full/.
 #   bash tests/make_chr22_test_reads.sh
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
-BAM_DIR=results_test/star/pe
-SRC=resources/test_data_full
-DST=resources/test_data
+BAM_DIR=tests/results/star/pe
+SRC=tests/data/fastq_full
+DST=tests/data/fastq
 
 if [[ ! -d "$SRC" ]]; then
 	mv "$DST" "$SRC"
 	mkdir -p "$DST"
 fi
 
-tail -n +2 config/test/units.tsv | while IFS=$'\t' read -r sample unit fq1 fq2 || [[ -n "$sample" ]]; do
+tail -n +2 tests/config/units.tsv | while IFS=$'\t' read -r sample unit fq1 fq2 || [[ -n "$sample" ]]; do
 	bam="$BAM_DIR/$sample/pe_aligned.bam"
 	ids=$(mktemp)
 	# read names of mapped primary alignments (either mate)

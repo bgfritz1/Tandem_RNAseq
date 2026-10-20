@@ -44,6 +44,6 @@ jobs:
         with:
           name: pipeline-logs
           path: |
-            results_test/logs/
+            tests/results/logs/
             .snakemake/log/
           if-no-files-found: ignore

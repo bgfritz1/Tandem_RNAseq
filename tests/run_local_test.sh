@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 # Test the pipeline installation end to end on the bundled test data.
 # Run from anywhere; requires snakemake >= 9 and conda/mamba on PATH.
-#   bash tests/run_local_test.sh            # full test; results_test/ is removed if it passes
-#   bash tests/run_local_test.sh --keep     # full test, keep results_test/ afterwards
+#   bash tests/run_local_test.sh            # full test; tests/results/ is removed if it passes
+#   bash tests/run_local_test.sh --keep     # full test, keep tests/results/ afterwards
 #   bash tests/run_local_test.sh --dry-run  # only lint + DAG check
-# On failure results_test/ is always kept for debugging.
+# On failure tests/results/ is always kept for debugging.
 set -euo pipefail
 
 DRY_RUN=false
@@ -18,9 +18,9 @@ for arg in "$@"; do
 done
 
 cd "$(dirname "$0")/.."
-PROFILE=config/local
-OUT=results_test
-N_SAMPLES=$(grep -vc '^sample' config/test/metadata.tsv)
+PROFILE=tests/profile
+OUT=tests/results
+N_SAMPLES=$(grep -vc '^sample' tests/config/metadata.tsv)
 
 step() { printf '\n=== %s ===\n' "$*"; }
 fail() { printf 'FAIL: %s\n' "$*" >&2; exit 1; }

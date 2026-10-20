@@ -5,6 +5,9 @@ import pdb
 
 min_version("9.0.0")
 
+# Default config; override with --configfile (e.g. tests/config/config.yaml)
+configfile: "config/config.yaml"
+
 #=============================
 # Output directory
 #=============================
@@ -244,7 +247,7 @@ rule star_index:
 		fasta=REF_FA,
 		gtf=REF_GTF,
 	output:
-		directory("resources/ref_genome/" + config["aligner"]["db_prefix"]),
+		directory(config["aligner"]["reference_dir"] + config["aligner"]["db_prefix"]),
 	message:
 		"Make STAR index"
 	threads: 12
@@ -266,7 +269,7 @@ rule star_pe_multi:
         fq1=[OUT + "/trimmed/{sample}.trim.R1.fastq.gz"],
         fq2=[OUT + "/trimmed/{sample}.trim.R2.fastq.gz"],  
         # path to STAR reference genome index
-        idx="resources/ref_genome/" + config["aligner"]["db_prefix"]
+        idx=config["aligner"]["reference_dir"] + config["aligner"]["db_prefix"]
     output:
         # see STAR manual for additional output files
         aln=OUT + "/star/pe/{sample}/pe_aligned.bam",

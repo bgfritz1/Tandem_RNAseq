@@ -2,7 +2,7 @@
 executor: cluster-generic
 
 # Submit wrapper script — reads per-rule resources (walltime, ppn, mem) from the jobscript
-cluster-generic-submit-cmd: "config/Computerome2/pbs-submit.py -W 'group_list=ku_00132' -A ku_00132"
+cluster-generic-submit-cmd: "config/Computerome2/pbs-submit.py -W 'group_list=PROJECT_NAME_HERE' -A PROJECT_NAME_HERE"
 
 # Command to check job status; must return one of: running, completed, failed
 #cluster-generic-status-cmd: "config/Computerome2/pbs-status.py"

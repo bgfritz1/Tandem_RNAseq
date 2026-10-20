@@ -1,6 +1,9 @@
+# EXAMPLE CONFIGURATION: edit this file (and config/metadata.tsv,
+# config/units.tsv) for your own data before running an analysis.
+# The installation test uses its own config in tests/config/ instead.
 
-#Computerome Group 
-group: ku_00132
+#Computerome project/group (replace before running on Computerome)
+group: PROJECT_NAME_HERE
 
 # Output directory: all results are written here. Relative paths are resolved
 # from the directory snakemake is launched in; absolute paths also work.
@@ -58,7 +61,7 @@ refs:
     - rfam-5s-database-id98
     - rfam-5.8s-database-id98
   kraken_db_dir:
-    - resources/babykraken
+    - resources/kraken_db # path to your Kraken2 database
   human_genome_cDNA:
     - Homo_sapiens.GRCh38.cdna.all.fa.gz
 

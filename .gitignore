@@ -1,6 +1,6 @@
 .snakemake/*
 logs/*
 results/*
-results_test/*
-resources/ref_genome/chr22_star/
-resources/test_data_full/
+tests/results/
+tests/data/ref_genome/chr22_star/
+tests/data/fastq_full/
