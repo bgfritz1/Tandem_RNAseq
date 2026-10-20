@@ -1,9 +1,21 @@
 #!/usr/bin/env bash
 # Test the pipeline installation end to end on the bundled test data.
 # Run from anywhere; requires snakemake >= 9 and conda/mamba on PATH.
-#   bash tests/run_local_test.sh            # full test
+#   bash tests/run_local_test.sh            # full test; results_test/ is removed if it passes
+#   bash tests/run_local_test.sh --keep     # full test, keep results_test/ afterwards
 #   bash tests/run_local_test.sh --dry-run  # only lint + DAG check
+# On failure results_test/ is always kept for debugging.
 set -euo pipefail
+
+DRY_RUN=false
+KEEP=false
+for arg in "$@"; do
+	case "$arg" in
+		--dry-run) DRY_RUN=true ;;
+		--keep) KEEP=true ;;
+		*) echo "Unknown option: $arg" >&2; exit 2 ;;
+	esac
+done
 
 cd "$(dirname "$0")/.."
 PROFILE=config/local
@@ -24,7 +36,10 @@ snakemake --profile "$PROFILE" --lint || echo "(lint reported issues; continuing
 step "Dry run"
 snakemake --profile "$PROFILE" -n --quiet rules
 
-[[ "${1:-}" == "--dry-run" ]] && { echo "Dry run OK"; exit 0; }
+$DRY_RUN && { echo "Dry run OK"; exit 0; }
+
+step "Removing old test results"
+rm -rf "$OUT"
 
 step "Creating conda environments"
 snakemake --profile "$PROFILE" --conda-create-envs-only
@@ -47,3 +62,10 @@ nkraken=$(ls "$OUT"/kraken/*.kraken.out 2>/dev/null | wc -l)
 [[ -s "$OUT/qc/multiqc.html" ]] || fail "$OUT/qc/multiqc.html missing"
 
 step "All checks passed"
+
+if $KEEP; then
+	echo "Results kept in $OUT/"
+else
+	rm -rf "$OUT"
+	echo "Removed $OUT/ (use --keep to keep it)"
+fi

@@ -45,10 +45,11 @@ A small test data set is bundled in `resources/` (4 paired-end samples, the huma
 mamba create -n tandem -c conda-forge -c bioconda 'snakemake>=9'
 conda activate tandem
 bash tests/run_local_test.sh            # lint, dry run, build envs, full run, check outputs
+bash tests/run_local_test.sh --keep     # same, but keep results_test/ afterwards
 bash tests/run_local_test.sh --dry-run  # quick check of the DAG only
 ```
 
-Outputs are written to `results_test/`. The first run takes longer because the conda environments are built.
+Outputs are written to `results_test/`, which is deleted when the test passes (kept on failure, or with `--keep`). The first run takes longer because the conda environments are built.
 To test on Computerome instead: `snakemake --profile config/Computerome2 --configfile config/test/config.yaml`.
 
 The test FASTQs in `resources/test_data/` only contain read pairs that align to chr22 (they were subset with `tests/make_chr22_test_reads.sh`), so the full test runs in about 1.5 minutes once the conda environments exist.
