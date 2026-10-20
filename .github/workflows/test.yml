@@ -1,0 +1,49 @@
+# Runs the pipeline end to end on the bundled chr22 test data (see tests/run_local_test.sh).
+name: Pipeline test
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    defaults:
+      run:
+        shell: bash -el {0} # login shell so the conda env is activated
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up conda with snakemake
+        uses: conda-incubator/setup-miniconda@v3
+        with:
+          miniforge-version: latest
+          activate-environment: snakemake
+          channels: conda-forge,bioconda
+          channel-priority: strict
+
+      - name: Install snakemake
+        run: conda install -y 'snakemake>=9'
+
+      # Rule environments (conda envs + wrapper envs) are the slowest part; reuse them
+      # until an env file or a wrapper version in the Snakefile changes.
+      - name: Cache rule conda environments
+        uses: actions/cache@v4
+        with:
+          path: .snakemake/conda
+          key: snakemake-conda-${{ runner.os }}-${{ hashFiles('workflow/envs/*.yaml', 'workflow/Snakefile') }}
+
+      - name: Run pipeline test
+        run: bash tests/run_local_test.sh
+
+      - name: Upload logs on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pipeline-logs
+          path: |
+            results_test/logs/
+            .snakemake/log/
+          if-no-files-found: ignore

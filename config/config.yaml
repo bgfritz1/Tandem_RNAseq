@@ -2,6 +2,11 @@
 #Computerome Group 
 group: ku_00132
 
+# Output directory: all results are written here. Relative paths are resolved
+# from the directory snakemake is launched in; absolute paths also work.
+# Can be overridden at runtime with: --config outdir=/path/to/out
+outdir: "results"
+
 #Sample metadata
 samples: config/metadata.tsv
 units: config/units.tsv

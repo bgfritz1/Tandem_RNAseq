@@ -156,10 +156,10 @@ if "cluster" in job_properties:
         os.makedirs(os.path.dirname(cluster["output"]), exist_ok=True)
         so = " -o " + cluster["output"]
 
-# Route PBS .o/.e output files to results/logs/cluster
+# Route PBS .o/.e output files to <outdir>/logs/cluster (TANDEM_OUTDIR is set by the Snakefile)
 rule = job_properties.get("rule", "unknown")
 jobid = job_properties.get("jobid", "0")
-log_dir = "results/logs/cluster"
+log_dir = os.path.join(os.environ.get("TANDEM_OUTDIR", "results"), "logs", "cluster")
 os.makedirs(log_dir, exist_ok=True)
 if not se:
     se = f" -e {log_dir}/{rule}.{jobid}.err"

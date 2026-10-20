@@ -1,4 +1,4 @@
-[![DOI](https://zenodo.org/badge/759815461.svg)](https://zenodo.org/badge/latestdoi/759815461)
+[![DOI](https://zenodo.org/badge/759815461.svg)](https://zenodo.org/badge/latestdoi/759815461) [![Pipeline test](https://github.com/bgfritz1/Tandem_RNAseq/actions/workflows/test.yml/badge.svg)](https://github.com/bgfritz1/Tandem_RNAseq/actions/workflows/test.yml)
 
 # README
 
@@ -21,20 +21,34 @@
  
  5. Edit the `config/congif.yaml`file with the relevant details. Paths can be relative to the repository directory. Note: Some options in the config file
  have not yet been implemented.
+   - `outdir` sets where all pipeline outputs are written (default `results`). It can be relative to the repository directory or absolute,
+   and can also be overridden at runtime, e.g. `snakemake --profile config/Computerome2 --config outdir=/home/projects/ku_00132/scratch/run1`.
  
  6. Once everythng is set up, make sure the following programs are available:
-  - `snakemake v6.15.3` I have had problems running the pipeling on snakemake v7
-  - `mamba 0.24.0`
-  - `python>3.7`  
-  On computerome, this can be done with: 
-  ```
-  module load miniconda3/4.12.0
-  module load mamba-org/mamba/0.24.0
-  module load snakemake/6.15.3
-  ```
-  
+  - `snakemake >= 9` (the Snakefile enforces `min_version("9.0.0")`)
+  - `conda` or `mamba` (rule environments are built with `software-deployment-method: conda`)
+  - `snakemake-executor-plugin-cluster-generic` (only needed for the Computerome2 profile)
+
   7. In `config/Computerome2/config.yaml` change the `cluster` parameter to the proper Computerome account string. 
   
   8. Now, you should be read to go! Navigate to the repository directory (the one containing the config/, workflow/, etc. files) and run the following command: 
   `snakemake --profile config/Computerome2`. This will start the analysis. It is advisable to run the analysis on a subset of samples first 
   to check that it works as expected. 
+
+
+## Testing the installation
+
+A small test data set is bundled in `resources/` (4 paired-end samples, the human chr22 reference + annotation, and a tiny Kraken2 database).
+`config/test/config.yaml` points the pipeline at it and `config/local` is a profile for running locally without a cluster.
+
+```
+mamba create -n tandem -c conda-forge -c bioconda 'snakemake>=9'
+conda activate tandem
+bash tests/run_local_test.sh            # lint, dry run, build envs, full run, check outputs
+bash tests/run_local_test.sh --dry-run  # quick check of the DAG only
+```
+
+Outputs are written to `results_test/`. The first run takes longer because the conda environments are built.
+To test on Computerome instead: `snakemake --profile config/Computerome2 --configfile config/test/config.yaml`.
+
+The test FASTQs in `resources/test_data/` only contain read pairs that align to chr22 (they were subset with `tests/make_chr22_test_reads.sh`), so the full test runs in about 1.5 minutes once the conda environments exist.

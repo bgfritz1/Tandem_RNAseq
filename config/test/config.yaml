@@ -1,0 +1,88 @@
+# Test configuration: runs the full pipeline on the small test data in
+# resources/ (4 samples, chr22 reference, babykraken). Used by
+# tests/run_local_test.sh via the config/local profile.
+
+
+#Computerome Group 
+group: ku_00132
+
+# Output directory: all results are written here. Relative paths are resolved
+# from the directory snakemake is launched in; absolute paths also work.
+# Can be overridden at runtime with: --config outdir=/path/to/out
+outdir: "results_test"
+
+#Sample metadata
+samples: config/test/metadata.tsv
+units: config/test/units.tsv
+
+# Steps
+
+run_alignment: true
+run_kraken: true
+run_bracken: false # bracken is not set up for babykraken
+run_multiqc: true
+
+# Alignment Details
+aligner:
+  reference_dir: "resources/ref_genome/" # Reference DIR should contain the genome fq and gtf files. 
+  reference_fq: "Homo_sapiens.GRCh38.dna.chromosome.22.fa"
+  db_prefix: "chr22_star"
+  star_index_extra: "--genomeSAindexNbases 11" # required by STAR for a small (~50 Mb) genome
+  annotation_gtf: "Homo_sapiens.GRCh38.115.chr22.gtf.gz"
+
+unmapped_reads:
+  keep_unmapped: false
+  align_unmapped: false
+  unmapped_refs: 
+      reference_fq: "custom/custom.fq"
+      annotation_gtf: "custom/custom.gtf"
+
+params:
+  cutadapt-pe: "-a AGATCGGAAGAGCACACGTCTGAACTCCAGTCA -A AGATCGGAAGAGCGTCGTGTAGGGAAAGAGTGT -g AGATCGGAAGAGCGTCGTGTAGGGAAAGAGTGT -G AGATCGGAAGAGCACACGTCTGAACTCCAGTCA --minimum-length 33 -e 0.005 --overlap 7"
+  cutadapt-se: "-a AGATCGGAAGAGCACACGTCTGAACTCCAGTCA -g AGATCGGAAGAGCGTCGTGTAGGGAAAGAGTGT --minimum-length 33 -e 0.005 --overlap 7" 
+  # reasoning behind parameters:
+  #   * `--minimum-length 33`:
+  #     * kallisto needs non-empty reads in current versions (fixed for future releases:
+  #       https://github.com/pachterlab/kallisto/commit/64fe837ca86f3664496483bcd2787c9376584fed)
+  #     * kallisto default k-mer length is 31 and 33 should give at least 3 k-mers for a read
+  #   * `-e 0.005`: the default cutadapt maximum error rate of `0.2` is far too high, for Illumina
+  #     data the error rate is more in the range of `0.005` and setting it accordingly should avoid
+  #     false positive adapter matches
+  #   * `--minimum-overlap 7`: the cutadapt default minimum overlap of `5` did trimming on the level
+  #     of expected adapter matches by chance
+  kraken:
+    read_length: 150
+
+refs:
+  rRNA_ref_dbs: 
+    - silva-arc-16s-id95
+    - silva-euk-18s-id95
+    - silva-bac-23s-id98
+    - silva-bac-16s-id90
+    - silva-euk-28s-id98
+    - rfam-5s-database-id98
+    - rfam-5.8s-database-id98
+  kraken_db_dir:
+    - resources/babykraken
+  human_genome_cDNA:
+    - Homo_sapiens.GRCh38.cdna.all.fa.gz
+
+plots:
+  bracken:
+    abund_cutoff: 0.05
+
+#===============================
+#Quantitative Model Evaluation
+#===============================
+
+genomes:
+  P_aeruginosa:
+    ref_fq: "P_aeruginosa/Pseudomonas_aeruginosa_PAO1_107.fna.gz"
+    annotation: "P_aeruginosa/Pseudomonas_aeruginosa_PAO1_107.gtf"
+  Homo_sapiens:
+    ref_fq: "Homo_sapiens.GRCh38.dna.primary_assembly.fa.gz"
+    annotation: "Homo_sapiens.GRCh38.106.gtf"
+
+  target_organism: "P_aeruginosa" # Should match folder names in reference/reference_genomes
+  filter1: "Homo_sapiens" #Filter reads from this genome (for example for Dual-RNA seq)
+

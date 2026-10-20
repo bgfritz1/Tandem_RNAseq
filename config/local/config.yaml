@@ -1,0 +1,10 @@
+# Snakemake v9 profile for running locally (no cluster), e.g. the installation test.
+# Usage: snakemake --profile config/local
+cores: 16
+software-deployment-method: conda
+printshellcmds: true
+configfile: config/test/config.yaml
+
+# feature_counts hardcodes tmpdir="/scratch" (Computerome); use /tmp locally
+set-resources:
+  - feature_counts:tmpdir="/tmp"
