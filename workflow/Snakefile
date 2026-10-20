@@ -176,6 +176,9 @@ rule concat_lanes_se:
 # Trim Adapter Sequences and Size Selection
 #============================================
 
+# cutadapt_se's "{sample}.qc.txt" also matches the PE "{sample}.concat.qc.txt"
+ruleorder: cutadapt_pe > cutadapt_se
+
 rule cutadapt_pe:
 	input:
 		r1 = OUT + "/concat/{sample}.concat.R1.fastq.gz",
@@ -262,7 +265,7 @@ rule star_index:
 	log:
 		f"{OUT}/logs/star_index_{config['aligner']['db_prefix']}.log",
 	wrapper:
-		"v9.4.1/bio/star/index"
+		"v9.19.2/bio/star/index"
 
 rule star_pe_multi:
     input:
@@ -281,15 +284,16 @@ rule star_pe_multi:
         OUT + "/logs/pe/{sample}.log",
     params:
         # optional parameters
-        extra="--outSAMtype BAM SortedByCoordinate --outSAMstrandField intronMotif --outSAMattributes NH HI AS nM NM MD",
+        # --limitBAMsortRAM: memory for coordinate sorting (bytes), on top of the loaded genome
+        extra="--outSAMtype BAM SortedByCoordinate --outSAMattributes NH HI AS nM NM MD --limitBAMsortRAM 20000000000",
     threads: 12
     resources:
         walltime="12:00:00",
         nodes="1",
         ppn="12",
-        mem="40gb"
+        mem="64gb"
     wrapper:
-        "v5.5.1/bio/star/align"
+        "v9.19.2/bio/star/align"
 
 #=============================================
 # Alignment with bwa-mem
@@ -586,7 +590,7 @@ rule kraken_build:
 		opts = "{config['refs']['kraken_db_dir']}/opts.t2d"
 	log:
 		OUT + "/logs/kraken/kraken_build.log"
-	threads: 4
+	threads: 12
 	conda:
 		"envs/kraken.yaml"
 	shell:
@@ -595,15 +599,18 @@ rule kraken_build:
 		k2-build --standard --db {input.pathname} 1>{log} 2>&1 || true
 		"""
 
+# Classify reads that STAR could not align to the host genome (host depletion)
 rule kraken2_classify_PE:
 	input:
-		fq1=OUT + "/trimmed/{sample}.trim.R1.fastq.gz",
-		fq2=OUT + "/trimmed/{sample}.trim.R2.fastq.gz",
+		fq1=OUT + "/star/pe/{sample}/unmapped.1.fastq.gz",
+		fq2=OUT + "/star/pe/{sample}/unmapped.2.fastq.gz",
 		db=config["refs"]["kraken_db_dir"],
 	output:
 		OUT + "/kraken/{sample}.kraken.out"
 	log:
 		OUT + "/logs/kraken/{sample}.log"
+	params:
+		confidence=config["params"]["kraken"].get("confidence", 0.1),
 	threads: 20
 	resources:
 		walltime="12:00:00",
@@ -613,7 +620,7 @@ rule kraken2_classify_PE:
 	conda:
 		"envs/kraken.yaml"
 	shell:
-		"kraken2 --threads {threads} --db {input.db} --report-zero-counts --paired --output - --report {output} {input.fq1} {input.fq2} 2>{log}"
+		"kraken2 --threads {threads} --db {input.db} --confidence {params.confidence} --report-zero-counts --paired --output - --report {output} {input.fq1} {input.fq2} 2>{log}"
 
 rule kraken2_classify_SE:
 	input:
@@ -710,15 +717,18 @@ rule abundance_table:
 
 rule test_multiqc_file:
   input:
-    expand(OUT + "/samtools_stats/{sample}.txt", sample=getSampleNames("ALL")),
+    expand(OUT + "/trimmed/{sample}.concat.qc.txt", sample = getSampleNames("ALL")),
+    expand(OUT + "/logs/pe/{sample}/Log.final.out", sample = getSampleNames("ALL")),
+    expand(OUT + "/samtools_stats/{sample}.txt", sample = getSampleNames("ALL")),
     expand(OUT + "/counts/{sample}.featureCounts.summary", sample = getSampleNames("ALL")),
-    expand(OUT + "/samtools_stats/{sample}.txt", sample = getSampleNames("ALL"))
+    expand(OUT + "/kraken/{sample}.kraken.out", sample = getSampleNames("ALL")) if config["run_kraken"] else [],
+    config=os.path.join(workflow.basedir, "multiqc_config.yaml"),
   output:
       OUT + "/qc/multiqc.html",
       OUT + "/qc/multiqc_data.zip",
   params:
       extra="--verbose",  # Optional: extra parameters for multiqc.
-      #use_input_files_only=True,  # Optional, use only a.txt and don't search folder samtools_stats for files
+      use_input_files_only=True,  # only parse the listed files, not everything in their folders
   log:
       OUT + "/logs/multiqc.log",
   wrapper:

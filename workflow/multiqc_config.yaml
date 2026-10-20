@@ -1,0 +1,12 @@
+# MultiQC settings so every module reports the same sample names.
+# featureCounts takes names from the BAM path, which is ".../{sample}/pe_aligned.bam"
+# for every sample, so use the summary file name ({sample}.featureCounts.summary) instead.
+use_filename_as_sample_name:
+  - featurecounts
+
+# Strip pipeline suffixes from file-derived names:
+#   cutadapt: {sample}.concat, kraken: {sample}.kraken.out, featureCounts: {sample}.featureCounts.summary
+extra_fn_clean_exts:
+  - ".featureCounts.summary"
+  - ".concat"
+  - ".kraken"

@@ -34,20 +34,21 @@ unmapped_reads:
       annotation_gtf: "custom/custom.gtf"
 
 params:
-  cutadapt-pe: "-a AGATCGGAAGAGCACACGTCTGAACTCCAGTCA -A AGATCGGAAGAGCGTCGTGTAGGGAAAGAGTGT -g AGATCGGAAGAGCGTCGTGTAGGGAAAGAGTGT -G AGATCGGAAGAGCACACGTCTGAACTCCAGTCA --minimum-length 33 -e 0.005 --overlap 7"
-  cutadapt-se: "-a AGATCGGAAGAGCACACGTCTGAACTCCAGTCA -g AGATCGGAAGAGCGTCGTGTAGGGAAAGAGTGT --minimum-length 33 -e 0.005 --overlap 7" 
+  cutadapt-pe: "-a AGATCGGAAGAGCACACGTCTGAACTCCAGTCA -A AGATCGGAAGAGCGTCGTGTAGGGAAAGAGTGT --nextseq-trim=20 --minimum-length 33 --overlap 7"
+  cutadapt-se: "-a AGATCGGAAGAGCACACGTCTGAACTCCAGTCA --nextseq-trim=20 --minimum-length 33 --overlap 7"
   # reasoning behind parameters:
-  #   * `--minimum-length 33`:
-  #     * kallisto needs non-empty reads in current versions (fixed for future releases:
-  #       https://github.com/pachterlab/kallisto/commit/64fe837ca86f3664496483bcd2787c9376584fed)
-  #     * kallisto default k-mer length is 31 and 33 should give at least 3 k-mers for a read
-  #   * `-e 0.005`: the default cutadapt maximum error rate of `0.2` is far too high, for Illumina
-  #     data the error rate is more in the range of `0.005` and setting it accordingly should avoid
-  #     false positive adapter matches
-  #   * `--minimum-overlap 7`: the cutadapt default minimum overlap of `5` did trimming on the level
-  #     of expected adapter matches by chance
+  #   * `-a`/`-A`: Illumina TruSeq-style 3' adapters (also used by NEBNext Ultra II) for R1/R2.
+  #     No 5' adapters (-g/-G): adapter read-through only occurs at the 3' end.
+  #   * `--nextseq-trim=20`: quality-trims 3' ends while treating high-quality G calls as low quality.
+  #     Needed for 2-colour chemistry (NextSeq, NovaSeq 6000/X), where no signal is called as G
+  #     and produces poly-G tails.
+  #   * `--minimum-length 33`: drop read pairs where either read is shorter than 33 bp after trimming.
+  #   * `--overlap 7`: require at least 7 bp of adapter before trimming; the cutadapt default (3)
+  #     trims short random matches at read ends.
+  #   * error rate: cutadapt default (`-e 0.1`), which tolerates sequencing errors in the adapter.
   kraken:
-    read_length: 150
+    read_length: 150 # also sets the STAR sjdbOverhang (read_length - 1)
+    confidence: 0.1 # kraken2 --confidence; higher = fewer, more reliable classifications
 
 refs:
   rRNA_ref_dbs: 
