@@ -276,24 +276,46 @@ rule star_pe_multi:
     output:
         # see STAR manual for additional output files
         aln=OUT + "/star/pe/{sample}/pe_aligned.bam",
-        log=OUT + "/logs/pe/{sample}/Log.out",
         log_final=OUT + "/logs/pe/{sample}/Log.final.out",
         sj=OUT + "/star/pe/{sample}/SJ.out.tab",
         unmapped=[OUT + "/star/pe/{sample}/unmapped.1.fastq.gz",OUT + "/star/pe/{sample}/unmapped.2.fastq.gz"],
+    # STAR writes its logs straight into logs/pe/{sample}/ (not via a temp dir like the
+    # snakemake wrapper), and log files are kept by Snakemake when the job fails
     log:
-        OUT + "/logs/pe/{sample}.log",
+        stderr=OUT + "/logs/pe/{sample}.log",
+        main=OUT + "/logs/pe/{sample}/Log.out",
+        progress=OUT + "/logs/pe/{sample}/Log.progress.out",
     params:
-        # optional parameters
+        prefix=OUT + "/logs/pe/{sample}/",
         # --limitBAMsortRAM: memory for coordinate sorting (bytes), on top of the loaded genome
-        extra="--outSAMtype BAM SortedByCoordinate --outSAMattributes NH HI AS nM NM MD --limitBAMsortRAM 20000000000",
+        extra="--outSAMattributes NH HI AS nM NM MD --limitBAMsortRAM 20000000000",
     threads: 12
     resources:
         walltime="12:00:00",
         nodes="1",
         ppn="12",
         mem="64gb"
-    wrapper:
-        "v9.19.2/bio/star/align"
+    conda:
+        "envs/star.yaml"
+    shell:
+        """
+        tmp=$(mktemp -d)
+        trap 'rm -rf "$tmp" {params.prefix}Unmapped.out.mate*' EXIT
+        STAR --runThreadN {threads} \
+            --genomeDir {input.idx} \
+            --readFilesIn {input.fq1} {input.fq2} \
+            --readFilesCommand gunzip -c \
+            --outSAMtype BAM SortedByCoordinate \
+            --outStd BAM_SortedByCoordinate \
+            --outReadsUnmapped Fastx \
+            {params.extra} \
+            --outTmpDir "$tmp/STARtmp" \
+            --outFileNamePrefix {params.prefix} \
+            > {output.aln} 2> {log.stderr}
+        mv {params.prefix}SJ.out.tab {output.sj}
+        pigz -p {threads} -c {params.prefix}Unmapped.out.mate1 > {output.unmapped[0]}
+        pigz -p {threads} -c {params.prefix}Unmapped.out.mate2 > {output.unmapped[1]}
+        """
 
 #=============================================
 # Alignment with bwa-mem
