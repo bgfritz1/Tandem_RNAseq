@@ -299,7 +299,7 @@ rule star_pe_multi:
         "envs/star.yaml"
     shell:
         """
-        tmp=$(mktemp -d)
+        tmp=$(mktemp -d -p $(dirname {output.aln}) STARtmp.XXXXXX)
         trap 'rm -rf "$tmp" {params.prefix}Unmapped.out.mate*' EXIT
         STAR --runThreadN {threads} \
             --genomeDir {input.idx} \
@@ -376,7 +376,7 @@ rule samtools_stats:
 		walltime="12:00:00",
 		nodes="1",
 		ppn="12",
-		mem="15gb",
+		mem="20gb",
 	log:
 		OUT + "/logs/samtools_stats/{sample}.log",
 	wrapper:
